@@ -14,3 +14,21 @@ documentation/.obsidian/cache
 .env.*
 !.env.example
 telegram_bot.md
+
+# Serena (semantic code index).
+# Serena ships its own .serena/.gitignore covering /cache and
+# /project.local.yml, so it is deliberately NOT blanket-ignored here.
+# Committed:  .serena/project.yml   -- language + tool config, travels with repo
+#             .serena/memories/     -- durable project knowledge, meant to be shared
+# Ignored:    .serena/cache/        -- pickled language-server symbols, regenerable
+#             .serena/project.local.yml -- per-machine overrides
+
+# Graphify (knowledge graph).
+# Nothing under graphify-out/ is canonically committed: every artifact is
+# regenerated from source, the graph and HTML viz are ~1.6 MB each, and the
+# cache runs to several MB. Tracking them would dirty every commit that
+# follows a rebuild and would bloat the submission archive.
+# Written in negatable form -- to start committing the human-readable report,
+# uncomment the exception below.
+/graphify-out/*
+# !/graphify-out/GRAPH_REPORT.md
