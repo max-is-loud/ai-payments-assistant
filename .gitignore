@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Obsidian: per-machine UI state, not vault config.
+# The rest of documentation/.obsidian/ is committed so the vault
+# configuration travels with the repository.
+documentation/.obsidian/workspace.json
+documentation/.obsidian/workspace-mobile.json
+documentation/.obsidian/cache
+
+# Secrets — never commit. Real credentials live only in the local .env,
+# which is created from .env.example during setup.
+.env
+.env.*
+!.env.example
+telegram_bot.md

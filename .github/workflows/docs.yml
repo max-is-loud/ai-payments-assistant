@@ -1,0 +1,32 @@
+name: docs
+
+on:
+  pull_request:
+    paths: ['documentation/**', '.github/workflows/docs.yml']
+  push:
+    branches: [main]
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Ban wikilinks and embeds. Note: shell examples using bash's
+      #    [[ ... ]] will trip this; keep them in fenced code blocks and
+      #    extend the filter here if it becomes a problem.
+      - name: No wikilinks
+        run: |
+          if grep -rn --include='*.md' -e '\[\[' documentation/; then
+            echo "::error::Wikilinks found in documentation/. Use relative markdown \
+          links with the .md extension: [Text](../path/to/note.md)"
+            exit 1
+          fi
+
+      # 2. Verify every relative path resolves. --offline skips network URLs,
+      #    so this is fast and never flakes on someone else's dead domain.
+      - name: Check doc links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --offline --no-progress --include-fragments 'documentation/**/*.md'
+          fail: true
