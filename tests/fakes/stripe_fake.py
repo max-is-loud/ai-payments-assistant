@@ -148,7 +148,9 @@ class FakeStripeGateway:
             amount_cents=amount_cents,
             idempotency_key=idempotency_key,
         )
-        payment = self.get_payment(payment_id)
+        if payment_id not in self.payments:
+            raise NotFound(f"No payment {payment_id}")
+        payment = self.payments[payment_id]
         amount = payment.refundable_cents if amount_cents is None else amount_cents
         refunded = payment.amount_refunded_cents + amount
         status = "refunded" if refunded >= payment.amount_cents else "partially_refunded"
