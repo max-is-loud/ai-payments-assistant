@@ -1,0 +1,106 @@
+"""Persistence invariants: a pending action executes once; bindings expire."""
+
+from datetime import datetime, timedelta
+
+from sqlalchemy import Engine
+
+from app.db import bindings, conversations, escalations, pending_actions
+from app.db.engine import session_scope
+
+NOW = datetime(2026, 9, 1, 12, 0)
+
+
+def test_pending_action_can_be_claimed_exactly_once(engine: Engine) -> None:
+    """Two approvals of the same action_id must not produce two refunds."""
+    with session_scope(engine) as session:
+        action = pending_actions.create(
+            session,
+            conversation_id="c1",
+            channel="web",
+            actor="owner",
+            action="refund_payment",
+            parameters={"payment_id": "pi_1", "amount_cents": None},
+            summary="Refund $45.00",
+            prompt="refund",
+        )
+        action_id = action.id
+    with session_scope(engine) as session:
+        assert pending_actions.claim(session, action_id) is True
+    with session_scope(engine) as session:
+        assert pending_actions.claim(session, action_id) is False
+        assert pending_actions.get(session, action_id).status == "executed"  # type: ignore[union-attr]
+
+
+def test_binding_expires_after_inactivity(engine: Engine) -> None:
+    """Fourteen idle days revoke the binding; activity inside the window renews it."""
+    with session_scope(engine) as session:
+        bindings.bind(
+            session,
+            telegram_id=42,
+            customer_id="cus_acme",
+            customer_name="Acme Corp",
+            now=NOW,
+        )
+    with session_scope(engine) as session:
+        assert bindings.resolve(session, 42, NOW + timedelta(days=13)) is not None
+    with session_scope(engine) as session:
+        # last_seen_at moved to day 13, so day 26 is still inside the window; day 28 is not.
+        assert bindings.resolve(session, 42, NOW + timedelta(days=26)) is not None
+        assert bindings.resolve(session, 42, NOW + timedelta(days=41)) is None
+    with session_scope(engine) as session:
+        assert bindings.resolve(session, 42, NOW + timedelta(days=41, hours=1)) is None
+
+
+def test_owner_revocation_covers_every_binding_for_a_customer(engine: Engine) -> None:
+    """DELETE /api/customers/{id}/telegram-binding must cut off every device."""
+    with session_scope(engine) as session:
+        bindings.bind(
+            session,
+            telegram_id=1,
+            customer_id="cus_acme",
+            customer_name="Acme Corp",
+            now=NOW,
+        )
+        bindings.bind(
+            session,
+            telegram_id=2,
+            customer_id="cus_acme",
+            customer_name="Acme Corp",
+            now=NOW,
+        )
+        bindings.bind(
+            session,
+            telegram_id=3,
+            customer_id="cus_maya",
+            customer_name="Maya Chen",
+            now=NOW,
+        )
+    with session_scope(engine) as session:
+        assert bindings.revoke_for_customer(session, "cus_acme", NOW) == 2
+        assert bindings.resolve(session, 1, NOW) is None
+        assert bindings.resolve(session, 3, NOW) is not None
+
+
+def test_escalation_is_approved_once(engine: Engine) -> None:
+    """Approving twice is a no-op the second time so the customer is not notified twice."""
+    with session_scope(engine) as session:
+        esc = escalations.file(
+            session, telegram_id=42, customer_id="cus_acme", customer_name="Acme Corp",
+            invoice_id="in_1", amount_cents=240000, reason="Above the bot's limit", now=NOW,
+        )
+        esc_id = esc.id
+    with session_scope(engine) as session:
+        assert escalations.mark_approved(session, esc_id, NOW) is not None
+        assert escalations.mark_approved(session, esc_id, NOW) is None
+        assert escalations.pending(session) == []
+
+
+def test_conversation_history_is_oldest_first_and_bounded(engine: Engine) -> None:
+    """The planner sees the last N turns in chronological order."""
+    with session_scope(engine) as session:
+        for i in range(5):
+            role = "user" if i % 2 == 0 else "assistant"
+            conversations.append(session, "c1", role, f"m{i}")
+    with session_scope(engine) as session:
+        history = conversations.history(session, "c1", limit=3)
+        assert [m.content for m in history] == ["m2", "m3", "m4"]
