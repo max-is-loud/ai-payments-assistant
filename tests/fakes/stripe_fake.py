@@ -59,16 +59,28 @@ class FakeStripeGateway:
         return payment
 
     def add_invoice(
-        self, invoice_id: str, customer_id: str, amount_cents: int, *, status: str = "open"
+        self,
+        invoice_id: str,
+        customer_id: str,
+        amount_cents: int,
+        *,
+        status: str = "open",
+        due_at: datetime | None = None,
+        description: str = "Services",
     ) -> Invoice:
         """Register an invoice; open invoices have the full amount remaining."""
         customer = self.customers.get(customer_id)
         invoice = Invoice(
-            id=invoice_id, number=invoice_id.upper(), customer_id=customer_id,
-            customer_name=customer.name if customer else None, total_cents=amount_cents,
-            amount_remaining_cents=amount_cents if status == "open" else 0, status=status,
-            due_at=datetime.now(UTC) + timedelta(days=14),
-            hosted_url=f"https://invoice.example/{invoice_id}", description="Services",
+            id=invoice_id,
+            number=invoice_id.upper(),
+            customer_id=customer_id,
+            customer_name=customer.name if customer else None,
+            total_cents=amount_cents,
+            amount_remaining_cents=amount_cents if status == "open" else 0,
+            status=status,
+            due_at=due_at or (datetime.now(UTC) + timedelta(days=14)),
+            hosted_url=f"https://invoice.example/{invoice_id}",
+            description=description,
             occurred_at=datetime.now(UTC),
         )
         self.invoices[invoice_id] = invoice
@@ -168,7 +180,16 @@ class FakeStripeGateway:
             due_date=due_date,
             idempotency_key=idempotency_key,
         )
-        return self.add_invoice(self._next("in"), customer_id, amount_cents)
+        due_at = datetime(
+            due_date.year, due_date.month, due_date.day, 23, 59, tzinfo=UTC
+        )
+        return self.add_invoice(
+            self._next("in"),
+            customer_id,
+            amount_cents,
+            description=description,
+            due_at=due_at,
+        )
 
     def create_payment_link(
         self, *, amount_cents: int, description: str, idempotency_key: str

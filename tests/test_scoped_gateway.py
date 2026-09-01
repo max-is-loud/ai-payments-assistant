@@ -42,3 +42,14 @@ def test_scoped_gateway_exposes_no_customer_id_parameter() -> None:
         if name.startswith("_"):
             continue
         assert "customer_id" not in inspect.signature(member).parameters, name
+
+
+def test_scoped_gateway_raises_not_your_invoice_for_missing_invoice_ids() -> None:
+    """Unknown invoice ids raise NotYourInvoice, same as foreign ones."""
+    fake = _two_customers()
+    scoped = CustomerScopedGateway(fake, "cus_acme")
+    with pytest.raises(NotYourInvoice, match="No such invoice on your account."):
+        scoped.my_invoice("in_ghost")
+    with pytest.raises(NotYourInvoice, match="No such invoice on your account."):
+        scoped.pay_my_invoice("in_ghost", idempotency_key="k")
+    assert not [c for c in fake.calls if c[0] == "pay_invoice"]

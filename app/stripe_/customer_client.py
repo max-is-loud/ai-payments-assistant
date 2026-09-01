@@ -6,7 +6,7 @@ method accepts a customer id — see `tests/test_scoped_gateway.py`.
 """
 
 from app.domain.models import Customer, Invoice
-from app.stripe_.gateway import StripeGateway, StripeGatewayError
+from app.stripe_.gateway import NotFound, StripeGateway, StripeGatewayError
 
 
 class NotYourInvoice(StripeGatewayError):
@@ -38,10 +38,14 @@ class CustomerScopedGateway:
         """One invoice, after proving it belongs to the bound customer.
 
         Raises:
-            NotYourInvoice: The id resolves to another customer's invoice. Raised
-                with the same message as a missing invoice so ids cannot be probed.
+            NotYourInvoice: The id does not exist or belongs to another customer's
+                invoice. Raised with the same message for both cases so ids cannot
+                be probed.
         """
-        invoice = self._owner.get_invoice(invoice_id)
+        try:
+            invoice = self._owner.get_invoice(invoice_id)
+        except NotFound as exc:
+            raise NotYourInvoice("No such invoice on your account.") from exc
         if invoice.customer_id != self._customer_id:
             raise NotYourInvoice("No such invoice on your account.")
         return invoice
