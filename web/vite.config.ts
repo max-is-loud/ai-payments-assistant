@@ -1,0 +1,14 @@
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+// The repo-root .env is the single place OWNER_API_TOKEN lives; Vite reads it
+// from envDir and exposes only the prefixes listed here to the browser bundle.
+export default defineConfig({
+  plugins: [react()],
+  envDir: "..",
+  envPrefix: ["VITE_", "OWNER_API_TOKEN"],
+  server: {
+    port: 5173,
+    proxy: { "/api": { target: "http://localhost:8000", changeOrigin: false } },
+  },
+});
