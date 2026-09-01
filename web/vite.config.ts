@@ -9,6 +9,8 @@ export default defineConfig({
   envPrefix: ["VITE_", "OWNER_API_TOKEN"],
   server: {
     port: 5173,
-    proxy: { "/api": { target: "http://localhost:8000", changeOrigin: false } },
+    // Node may bind ::1-only for "localhost"; browsers fall back between ::1 and 127.0.0.1.
+    host: "127.0.0.1",
+    proxy: { "/api": { target: "http://127.0.0.1:8000", changeOrigin: false } },
   },
 });

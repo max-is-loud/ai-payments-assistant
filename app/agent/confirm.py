@@ -93,29 +93,31 @@ def execute_pending(
         raise UnknownAction()
     if not pending_actions.claim(session, action_id):
         raise AlreadyDecided(row.status)
+    spec = registry.get(row.action)
+    if spec is None:
+        pending_actions.fail(session, action_id, "action no longer registered")
+        session.commit()
+        raise UnregisteredAction(row.action)
     try:
-        spec = registry.get(row.action)
-        if spec is None:
-            pending_actions.fail(session, action_id, "action no longer registered")
-            session.commit()
-            raise UnregisteredAction(row.action)
-        try:
-            parameters = json.loads(row.parameters_json)
-            params = spec.params.model_validate(parameters)
-        except (json.JSONDecodeError, ValidationError) as exc:
-            pending_actions.fail(session, action_id, str(exc))
-            session.commit()
-            raise ConfirmationError(
-                "invalid_stored_action",
-                "That action's stored parameters are no longer valid.",
-            ) from exc
-        exec_ctx = dataclasses.replace(ctx, idempotency_key=idempotency_key or action_id)
-        try:
-            result = spec.handler(exec_ctx, params)
-        except Exception as exc:
-            pending_actions.fail(session, action_id, str(exc))
-            session.commit()
-            raise
+        parameters = json.loads(row.parameters_json)
+        params = spec.params.model_validate(parameters)
+    except (json.JSONDecodeError, ValidationError) as exc:
+        pending_actions.fail(session, action_id, str(exc))
+        session.commit()
+        raise ConfirmationError(
+            "invalid_stored_action",
+            "That action's stored parameters are no longer valid.",
+        ) from exc
+    exec_ctx = dataclasses.replace(ctx, idempotency_key=idempotency_key or action_id)
+    try:
+        result = spec.handler(exec_ctx, params)
+    except Exception as exc:
+        pending_actions.fail(session, action_id, str(exc))
+        session.commit()
+        raise
+    # Stripe already ran; a failure serialising or recording the result must still
+    # land the claim on a terminal status, never leave it rolled back to pending.
+    try:
         jsonable = to_jsonable(result)
         pending_actions.finish(session, action_id, jsonable)
         audit.record(
@@ -128,8 +130,10 @@ def execute_pending(
             result=jsonable,
             mutation=True,
         )
-        return Execution(
-            action=row.action, parameters=parameters, summary=row.summary, result=jsonable
-        )
-    except (UnknownAction, AlreadyDecided):
+    except Exception as exc:
+        pending_actions.fail(session, action_id, str(exc))
+        session.commit()
         raise
+    return Execution(
+        action=row.action, parameters=parameters, summary=row.summary, result=jsonable
+    )

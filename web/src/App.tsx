@@ -29,9 +29,12 @@ export default function App() {
       .then((s) => { setSummary(s); setFacts(s.facts); })
       .catch((e) => setSummaryError(e instanceof ApiError && e.hint ? `${e.message} ${e.hint}` : String(e)));
     apiFetch<Escalation[]>("/api/escalations").then(setEscalations).catch(() => undefined);
-    onMutation(refreshFacts);
+    const unsubscribe = onMutation(refreshFacts);
     const timer = setInterval(refreshFacts, 30_000);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      unsubscribe();
+    };
   }, [onMutation, refreshFacts]);
 
   const approveEscalation = async (id: string) => {

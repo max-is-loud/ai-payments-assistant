@@ -5,6 +5,7 @@ bound. The $2,000 ceiling is enforced in `_guard_ceiling`, called by both
 the proposal and the execution path, before any payment call.
 """
 
+from datetime import UTC
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -97,7 +98,7 @@ def _guard_ceiling(ctx: CustomerContext, invoice: Invoice) -> dict[str, Any] | N
         ctx.session, telegram_id=ctx.telegram_id, customer_id=ctx.gateway.customer_id,
         customer_name=ctx.customer_name, invoice_id=invoice.id,
         amount_cents=invoice.amount_remaining_cents, reason="Payment at or above the bot's limit",
-        now=ctx.now.replace(tzinfo=None),
+        now=ctx.now.astimezone(UTC).replace(tzinfo=None),
     )
     return {"escalated": True, "escalation_id": row.id, "message": CEILING_MESSAGE}
 
@@ -146,7 +147,7 @@ def escalate_to_owner(ctx: CustomerContext, params: EscalateParams) -> dict[str,
     row = escalations.file(
         ctx.session, telegram_id=ctx.telegram_id, customer_id=ctx.gateway.customer_id,
         customer_name=ctx.customer_name, invoice_id=None, amount_cents=0, reason=params.reason,
-        now=ctx.now.replace(tzinfo=None),
+        now=ctx.now.astimezone(UTC).replace(tzinfo=None),
     )
     return {"escalated": True, "escalation_id": row.id,
             "message": "I've passed this to the business owner; they'll follow up here."}

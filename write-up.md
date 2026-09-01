@@ -69,6 +69,13 @@
   claim and every terminal status change immediately, before any exception
   can propagate past it, and a regression test asserts an unregistered or
   invalid stored action ends up `failed` and never executable again.
+- **An SSE framing mismatch, also caught only in final review.** The server
+  streamed sse-starlette's default `\r\n`-separated frames while the
+  frontend's hand-rolled parser split on `\n\n`; both curl and httpx's
+  `iter_lines()` normalize line endings, so every manual check and every
+  existing test looked fine while a real browser would have received zero
+  events — a reminder that streaming contracts need a raw-byte test, not
+  just a line-normalized one.
 
 ## Limitations / with more time
 

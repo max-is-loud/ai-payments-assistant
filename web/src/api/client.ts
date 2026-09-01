@@ -50,16 +50,22 @@ export async function streamTurn(
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+    // Normalize \r\n to \n so the parser below is robust regardless of server
+    // framing (sse.py sends \n, but this does not assume that stays true).
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
     let boundary: number;
     while ((boundary = buffer.indexOf("\n\n")) !== -1) {
       const frame = buffer.slice(0, boundary);
       buffer = buffer.slice(boundary + 2);
-      let type = "message", data = "";
+      let type = "message";
+      const dataLines: string[] = [];
       for (const line of frame.split("\n")) {
         if (line.startsWith("event:")) type = line.slice(6).trim();
-        else if (line.startsWith("data:")) data += line.slice(5).trim();
+        else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
       }
+      // Strict SSE semantics join multi-line data with \n; the backend only ever
+      // emits single-line JSON, so this is a no-op in practice.
+      const data = dataLines.join("\n");
       if (data) onEvent({ type: type as AgentEvent["type"], data: JSON.parse(data) });
     }
   }

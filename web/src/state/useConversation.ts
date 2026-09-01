@@ -39,7 +39,12 @@ export function useConversation() {
   const [error, setError] = useState<string | null>(null);
   const mutationListeners = useRef<(() => void)[]>([]);
 
-  const onMutation = useCallback((cb: () => void) => { mutationListeners.current.push(cb); }, []);
+  const onMutation = useCallback((cb: () => void) => {
+    mutationListeners.current.push(cb);
+    return () => {
+      mutationListeners.current = mutationListeners.current.filter((f) => f !== cb);
+    };
+  }, []);
   const notifyMutation = () => mutationListeners.current.forEach((cb) => cb());
 
   const patch = (turnId: string, fn: (t: Turn) => Turn) =>

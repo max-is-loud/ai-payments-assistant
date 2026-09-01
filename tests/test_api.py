@@ -85,6 +85,25 @@ def test_message_turn_streams_typed_events_and_persists_history(world: Any) -> N
     assert history["pending"] is None
 
 
+def test_message_stream_frames_are_separated_by_a_blank_line(world: Any) -> None:
+    r"""The wire bytes use \n\n framing, matching the frontend's hand-rolled SSE parser.
+
+    sse-starlette defaults to \r\n between fields; the route asks for \n
+    explicitly. httpx's `iter_lines()` (and curl) both normalize line
+    endings and would hide a regression back to \r\n, so this reads
+    `iter_raw()` bytes straight off the response.
+    """
+    client, _fake, llm, _ = world
+    llm._responses.extend([_step("answer", text="All good.")])
+    with client.stream(
+        "POST", "/api/conversations/c-raw/messages", json={"text": "hi"}, headers=AUTH
+    ) as r:
+        assert r.status_code == 200
+        raw = b"".join(r.iter_raw())
+    assert b"\n\n" in raw
+    assert b"\r\n" not in raw
+
+
 def test_confirmation_executes_the_stored_action_once_with_the_header_key(world: Any) -> None:
     """Approve runs exactly the proposal; the header becomes Stripe's key; repeats 409."""
     client, fake, llm, _ = world

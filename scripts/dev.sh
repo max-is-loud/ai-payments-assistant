@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Run the API, the Telegram bot, and the web dev server together.
-# One Ctrl-C stops all three. The bot is skipped politely if no token is set.
+# One Ctrl-C stops all three. The bot process exits fast with a clear message if
+# TELEGRAM_BOT_TOKEN is unset; API and web keep running.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

@@ -4,7 +4,7 @@ Shared by the chat action `approve_escalation` and `POST /api/escalations/{id}/a
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -61,7 +61,7 @@ def approve_and_notify(
     if row is None:
         raise EscalationNotFound(escalation_id)
     approved = escalations.mark_approved(
-        session, escalation_id, now.replace(tzinfo=None)
+        session, escalation_id, now.astimezone(UTC).replace(tzinfo=None)
     )
     if approved is None:
         return ApprovalOutcome(
