@@ -84,3 +84,12 @@ def latest_pending(session: Session, conversation_id: str) -> PendingAction | No
         .order_by(PendingAction.created_at.desc())
         .limit(1)
     ).first()
+
+
+def fail(session: Session, action_id: str, error: str) -> None:
+    """Record that execution raised after the claim; the action is not re-approvable."""
+    session.execute(
+        update(PendingAction)
+        .where(PendingAction.id == action_id)
+        .values(status="failed", result_json=json.dumps({"error": error}))
+    )
