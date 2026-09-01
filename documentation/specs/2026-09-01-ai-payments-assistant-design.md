@@ -330,11 +330,6 @@ variable: Anthropic and OpenAI. This is architecture, not a headline feature —
 its purpose is that the reviewer can run the project with whichever key they
 already hold.
 
-A four-backend version including subscription-based paths was considered and
-dropped. It answers a question this reviewer did not ask, and routing an
-application's inference through a personal subscription CLI is a signal worth
-avoiding in a submission about production judgment.
-
 ## 10. Testing
 
 Tests go where claims are load-bearing.
