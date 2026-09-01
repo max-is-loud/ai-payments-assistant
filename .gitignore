@@ -8,6 +8,12 @@ documentation/.obsidian/workspace.json
 documentation/.obsidian/workspace-mobile.json
 documentation/.obsidian/cache
 
+# Claude Code: per-machine settings. Committed: CLAUDE.md and .claude/rules/,
+# so conventions travel with the repo. Ignored here rather than relying on a
+# developer's global gitignore, so a fresh clone is protected too.
+.claude/settings.local.json
+CLAUDE.local.md
+
 # Secrets — never commit. Real credentials live only in the local .env,
 # which is created from .env.example during setup.
 .env
