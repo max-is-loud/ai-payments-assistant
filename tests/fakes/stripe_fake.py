@@ -207,8 +207,8 @@ class FakeStripeGateway:
 
     def pay_invoice(self, invoice_id: str, *, idempotency_key: str) -> Invoice:
         """Mark paid and record a matching payment."""
-        self._record("pay_invoice", invoice_id=invoice_id, idempotency_key=idempotency_key)
         invoice = self.get_invoice(invoice_id)
+        self._record("pay_invoice", invoice_id=invoice_id, idempotency_key=idempotency_key)
         paid = Invoice(**{**invoice.__dict__, "status": "paid", "amount_remaining_cents": 0})
         self.invoices[invoice_id] = paid
         self.add_payment(self._next("pi"), invoice.customer_id, invoice.total_cents)

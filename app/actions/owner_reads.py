@@ -7,14 +7,11 @@ from pydantic import BaseModel, Field
 
 from app.actions.context import OwnerContext
 from app.agent.events import to_jsonable
+from app.agent.schema import NoParams
 from app.db import escalations
 from app.domain.models import Invoice, Payment
 from app.domain.periods import date_range_window
 from app.domain.summary import DailyFacts, build_daily_facts, period_totals
-
-
-class NoParams(BaseModel):
-    """For actions that take nothing."""
 
 
 class QueryPaymentsParams(BaseModel):

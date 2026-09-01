@@ -29,6 +29,10 @@ class ClarifyParams(BaseModel):
     question: str
 
 
+class NoParams(BaseModel):
+    """For actions that take nothing."""
+
+
 TERMINAL_ACTIONS: dict[str, type[BaseModel]] = {"answer": AnswerParams, "clarify": ClarifyParams}
 
 
