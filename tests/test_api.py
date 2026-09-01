@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
 from app.api.app import Services, create_app
-from app.db import escalations
+from app.db import escalations, pending_actions
 from app.db.engine import session_scope
 from app.settings import Settings
 from tests.fakes.llm_fake import ScriptedLLM
@@ -133,6 +133,32 @@ def test_cancel_dismisses_a_pending_action(world: Any) -> None:
         "/api/conversations/c2/confirm", json={"action_id": action_id}, headers=AUTH
     )
     assert confirmed.status_code == 409
+
+
+def test_confirm_stream_error_frame_carries_a_hint(world: Any, engine: Engine) -> None:
+    """SSE error frames match the HTTP envelope's three fields, even mid-stream.
+
+    The route's pre-stream check only inspects status/actor/conversation, so it
+    cannot catch stored parameters that no longer validate; that failure surfaces
+    from `execute_pending` inside the `events()` generator instead, which is the
+    branch this test exercises (unlike the cancelled-action case above, which the
+    pre-stream check rejects with a plain 409 before any SSE frame is emitted).
+    """
+    client, *_ = world
+    with session_scope(engine) as session:
+        row = pending_actions.create(
+            session, conversation_id="c3", channel="web", actor="owner",
+            action="refund_payment", parameters={"payment_id": 123},
+            summary="Invalid refund", prompt="test",
+        )
+        action_id = row.id
+    with client.stream(
+        "POST", "/api/conversations/c3/confirm", json={"action_id": action_id}, headers=AUTH
+    ) as r:
+        events = _events(r)
+    assert [e for e, _ in events] == ["error"]
+    assert events[0][1]["code"] == "invalid_stored_action"
+    assert set(events[0][1]) == {"code", "message", "hint"}
 
 
 def test_summary_facts_without_narration(world: Any) -> None:

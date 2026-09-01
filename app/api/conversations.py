@@ -137,7 +137,9 @@ def confirm(
                     idempotency_key=idempotency_key,
                 )
             except ConfirmationError as exc:
-                yield AgentEvent("error", {"code": exc.code, "message": str(exc)})
+                yield AgentEvent(
+                    "error", {"code": exc.code, "message": str(exc), "hint": ""}
+                )
                 return
             except StripeGatewayError as exc:
                 yield AgentEvent(
