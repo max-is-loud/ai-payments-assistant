@@ -58,6 +58,7 @@ a { color: var(--accent-ink); }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 14px; } .kv dt { color: var(--ink-3); } .kv dd { margin: 0; }
 
 .composer { position: sticky; bottom: 16px; display: flex; gap: 8px; background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 8px; box-shadow: var(--shadow); }
+.composer:focus-within { border-color: var(--accent); }
 .composer input { flex: 1; border: 0; padding: 10px 12px; background: transparent; outline: none; }
 .composer input::placeholder { color: var(--ink-3); }
 
