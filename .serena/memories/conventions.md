@@ -38,7 +38,31 @@ second check).
   signature, and never types (annotations carry those).
 - Full type annotations on every parameter and return value.
 - Inline comments explain **why**, never **what**.
-- `snake_case` module names.
+- `snake_case` module names; the filename names the responsibility
+  (`refunds.py`, not `payment_utils.py`).
+
+## Module boundaries — no god files
+
+- A module has **one reason to change**. A second reason means split.
+- Tripwire, not a rule: past 300 lines justify the file; past 400 split it.
+- Smells: a name needing "and"; `utils`/`helpers`/`common`/`misc`; imports
+  spanning unrelated concerns; one file edited for every feature change.
+- Each module answers on sight: what it does, how to use it, what it depends
+  on.
+
+## DRY, bounded by YAGNI
+
+- **DRY applies to duplicated knowledge, not duplicated characters.** Two
+  functions that look alike but change for different reasons are not
+  duplication; merging them creates harmful coupling.
+- **Extract on the third occurrence.** Two examples usually guess the
+  abstraction wrong, and a wrong abstraction costs more than the duplication.
+- **Always single-source** business rules, limits, thresholds (e.g. the
+  payment ceiling appears exactly once).
+- YAGNI forbids: unused parameters, config with one value, an ABC with one
+  implementation, empty plugin points, unhandled-case handling.
+- Test before abstracting: **name the second caller.** If you cannot, do not
+  build it.
 
 ## Tooling boundaries
 
