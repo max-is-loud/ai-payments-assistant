@@ -8,8 +8,15 @@ import pytest
 from pydantic import BaseModel
 from sqlalchemy import Engine
 
-from app.agent.confirm import AlreadyDecided, UnknownAction, execute_pending
+from app.agent.confirm import (
+    AlreadyDecided,
+    ConfirmationError,
+    UnknownAction,
+    UnregisteredAction,
+    execute_pending,
+)
 from app.agent.schema import ActionSpec, Proposal, Registry
+from app.db import audit as audit_repo
 from app.db import pending_actions
 from app.db.engine import session_scope
 from app.stripe_.gateway import NotFound
@@ -79,6 +86,10 @@ def test_executes_the_stored_parameters_once(engine: Engine) -> None:
         )
     ]
     with session_scope(engine) as session:
+        audit_entries = audit_repo.recent(session)
+        assert len(audit_entries) == 1
+        assert audit_entries[0].mutation is True
+    with session_scope(engine) as session:
         with pytest.raises(AlreadyDecided):
             execute_pending(
                 session=session,
@@ -131,3 +142,64 @@ def test_handler_failure_marks_the_action_failed(engine: Engine) -> None:
             )
     with session_scope(engine) as session:
         assert pending_actions.get(session, action_id).status == "failed"  # type: ignore[union-attr]
+
+
+def test_unregistered_action_is_marked_failed_not_reapprovable(
+    engine: Engine,
+) -> None:
+    """Unregistered action is marked failed durably; a retry raises AlreadyDecided."""
+    action_id = _stored_refund(engine, actor="owner")
+    registry_missing = Registry([])
+    with session_scope(engine) as session:
+        with pytest.raises(UnregisteredAction) as exc_info:
+            execute_pending(
+                session=session,
+                action_id=action_id,
+                registry=registry_missing,
+                ctx=Ctx(FakeStripeGateway()),
+                expected_actor="owner",
+            )
+        assert exc_info.value.code == "unregistered_action"
+    with session_scope(engine) as session:
+        action = pending_actions.get(session, action_id)
+        assert action is not None
+        assert action.status == "failed"
+    with session_scope(engine) as session:
+        with pytest.raises(AlreadyDecided):
+            execute_pending(
+                session=session,
+                action_id=action_id,
+                registry=registry_missing,
+                ctx=Ctx(FakeStripeGateway()),
+                expected_actor="owner",
+            )
+
+
+def test_invalid_stored_parameters_are_marked_failed(engine: Engine) -> None:
+    """Invalid parameters (e.g., type mismatch) mark action failed durably."""
+    with session_scope(engine) as session:
+        row = pending_actions.create(
+            session,
+            conversation_id="c1",
+            channel="web",
+            actor="owner",
+            action="refund",
+            parameters={"payment_id": 123},
+            summary="Invalid refund",
+            prompt="test",
+        )
+        action_id = row.id
+    with session_scope(engine) as session:
+        with pytest.raises(ConfirmationError) as exc_info:
+            execute_pending(
+                session=session,
+                action_id=action_id,
+                registry=REGISTRY,
+                ctx=Ctx(FakeStripeGateway()),
+                expected_actor="owner",
+            )
+        assert exc_info.value.code == "invalid_stored_action"
+    with session_scope(engine) as session:
+        action = pending_actions.get(session, action_id)
+        assert action is not None
+        assert action.status == "failed"

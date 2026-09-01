@@ -10,6 +10,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.agent.events import to_jsonable
@@ -40,6 +41,14 @@ class AlreadyDecided(ConfirmationError):
     def __init__(self, status: str) -> None:
         """Name the status so a double-click shows 'already executed', not an error."""
         super().__init__("already_decided", f"That action was already {status}.")
+
+
+class UnregisteredAction(ConfirmationError):
+    """The action name is no longer in the registry."""
+
+    def __init__(self, action: str) -> None:
+        """Store which action is no longer available."""
+        super().__init__("unregistered_action", f"Action '{action}' is no longer available.")
 
 
 @dataclass(frozen=True)
@@ -75,7 +84,8 @@ def execute_pending(
     Raises:
         UnknownAction: No such action for this actor.
         AlreadyDecided: The action is no longer pending.
-        ConfirmationError: The action name is no longer registered.
+        UnregisteredAction: The action name is no longer in the registry.
+        ConfirmationError: Parameter validation failed or handler raised.
         Exception: Whatever the handler raised; the action is marked failed first.
     """
     row = pending_actions.get(session, action_id)
@@ -83,23 +93,43 @@ def execute_pending(
         raise UnknownAction()
     if not pending_actions.claim(session, action_id):
         raise AlreadyDecided(row.status)
-    spec = registry.get(row.action)
-    if spec is None:
-        pending_actions.fail(session, action_id, "action no longer registered")
-        raise ConfirmationError("unknown_action", f"Action '{row.action}' is no longer available.")
-    parameters = json.loads(row.parameters_json)
-    params = spec.params.model_validate(parameters)
-    exec_ctx = dataclasses.replace(ctx, idempotency_key=idempotency_key or action_id)
     try:
-        result = spec.handler(exec_ctx, params)
-    except Exception as exc:
-        pending_actions.fail(session, action_id, str(exc))
-        session.commit()
+        spec = registry.get(row.action)
+        if spec is None:
+            pending_actions.fail(session, action_id, "action no longer registered")
+            session.commit()
+            raise UnregisteredAction(row.action)
+        try:
+            parameters = json.loads(row.parameters_json)
+            params = spec.params.model_validate(parameters)
+        except (json.JSONDecodeError, ValidationError) as exc:
+            pending_actions.fail(session, action_id, str(exc))
+            session.commit()
+            raise ConfirmationError(
+                "invalid_stored_action",
+                "That action's stored parameters are no longer valid.",
+            ) from exc
+        exec_ctx = dataclasses.replace(ctx, idempotency_key=idempotency_key or action_id)
+        try:
+            result = spec.handler(exec_ctx, params)
+        except Exception as exc:
+            pending_actions.fail(session, action_id, str(exc))
+            session.commit()
+            raise
+        jsonable = to_jsonable(result)
+        pending_actions.finish(session, action_id, jsonable)
+        audit.record(
+            session,
+            channel=row.channel,
+            actor=row.actor,
+            prompt=row.prompt,
+            action=row.action,
+            parameters=parameters,
+            result=jsonable,
+            mutation=True,
+        )
+        return Execution(
+            action=row.action, parameters=parameters, summary=row.summary, result=jsonable
+        )
+    except (UnknownAction, AlreadyDecided):
         raise
-    jsonable = to_jsonable(result)
-    pending_actions.finish(session, action_id, jsonable)
-    audit.record(
-        session, channel=row.channel, actor=row.actor, prompt=row.prompt, action=row.action,
-        parameters=parameters, result=jsonable, mutation=True,
-    )
-    return Execution(action=row.action, parameters=parameters, summary=row.summary, result=jsonable)
