@@ -7,6 +7,7 @@ translates SDK exceptions into `StripeGatewayError`s with a usable hint.
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date, datetime, time
+from typing import Any
 
 import stripe
 
@@ -19,6 +20,18 @@ STRIPE_API_VERSION = "2026-08-26.dahlia"
 """Pinned so behaviour does not change when the reviewer's account default moves."""
 
 PAGE = 100
+
+
+def _plain(obj: stripe.StripeObject) -> dict[str, Any]:
+    """Convert a Stripe SDK object to a plain dict for domain mapping.
+
+    In stripe-python 15, StripeObject is no longer a dict subclass and lacks
+    .get() despite supporting __getitem__ and __contains__. Domain mapping
+    functions use .get() for optional fields, so every SDK object must be
+    converted via .to_dict(), which recursively transforms nested objects
+    (latest_charge, customer, outcome, metadata) into plain dicts.
+    """
+    return obj.to_dict()
 
 
 @contextmanager
@@ -78,7 +91,7 @@ class StripeOwnerGateway:
             page = self._client.v1.payment_intents.list(
                 {"limit": PAGE, "expand": ["data.latest_charge", "data.customer"]}
             )
-            mapped = [to_payment(intent) for intent in page.auto_paging_iter()]
+            mapped = [to_payment(_plain(intent)) for intent in page.auto_paging_iter()]
         return [payment for payment in mapped if payment is not None]
 
     def get_payment(self, payment_id: str) -> Payment:
@@ -91,7 +104,7 @@ class StripeOwnerGateway:
             intent = self._client.v1.payment_intents.retrieve(
                 payment_id, {"expand": ["latest_charge", "customer"]}
             )
-        payment = to_payment(intent)
+        payment = to_payment(_plain(intent))
         if payment is None:
             raise NotFound(f"{payment_id} has no payment attempt to act on.")
         return payment
@@ -107,7 +120,7 @@ class StripeOwnerGateway:
             params["status"] = status
         with translate_stripe_errors():
             page = self._client.v1.invoices.list(params)  # type: ignore[arg-type]
-            return [to_invoice(invoice) for invoice in page.auto_paging_iter()]
+            return [to_invoice(_plain(invoice)) for invoice in page.auto_paging_iter()]
 
     def get_invoice(self, invoice_id: str) -> Invoice:
         """One invoice with its customer expanded."""
@@ -115,18 +128,19 @@ class StripeOwnerGateway:
             invoice = self._client.v1.invoices.retrieve(
                 invoice_id, {"expand": ["customer"]}
             )
-            return to_invoice(invoice)
+            return to_invoice(_plain(invoice))
 
     def list_customers(self) -> list[Customer]:
         """Every customer; a demo account has tens, not thousands."""
         with translate_stripe_errors():
             page = self._client.v1.customers.list({"limit": PAGE})
-            return [to_customer(customer) for customer in page.auto_paging_iter()]
+            return [to_customer(_plain(customer)) for customer in page.auto_paging_iter()]
 
     def get_customer(self, customer_id: str) -> Customer:
         """One customer by id."""
         with translate_stripe_errors():
-            return to_customer(self._client.v1.customers.retrieve(customer_id))
+            customer = self._client.v1.customers.retrieve(customer_id)
+            return to_customer(_plain(customer))
 
     def find_customer_by_bind_token(self, token: str) -> Customer | None:
         """Scan customer metadata for a seed-minted Telegram token.
@@ -137,8 +151,9 @@ class StripeOwnerGateway:
         with translate_stripe_errors():
             page = self._client.v1.customers.list({"limit": PAGE})
             for customer in page.auto_paging_iter():
-                if (customer.get("metadata") or {}).get("telegram_bind_token") == token:
-                    return to_customer(customer)
+                data = _plain(customer)
+                if (data.get("metadata") or {}).get("telegram_bind_token") == token:
+                    return to_customer(data)
         return None
 
     def refund(self, payment_id: str, amount_cents: int | None, *, idempotency_key: str) -> Refund:
@@ -147,9 +162,10 @@ class StripeOwnerGateway:
         if amount_cents is not None:
             params["amount"] = amount_cents
         with translate_stripe_errors():
-            return to_refund(
-                self._client.v1.refunds.create(params, options={"idempotency_key": idempotency_key})  # type: ignore[arg-type]
+            refund_obj = self._client.v1.refunds.create(
+                params, options={"idempotency_key": idempotency_key}  # type: ignore[arg-type]
             )
+            return to_refund(_plain(refund_obj))
 
     def create_invoice(
         self,
@@ -193,7 +209,7 @@ class StripeOwnerGateway:
                 {"expand": ["customer"]},
                 options={"idempotency_key": f"{idempotency_key}:finalize"},
             )
-        return to_invoice(finalized)
+        return to_invoice(_plain(finalized))
 
     def create_payment_link(
         self, *, amount_cents: int, description: str, idempotency_key: str
@@ -223,4 +239,4 @@ class StripeOwnerGateway:
             paid = self._client.v1.invoices.pay(
                 invoice_id, {"expand": ["customer"]}, options={"idempotency_key": idempotency_key}
             )
-        return to_invoice(paid)
+        return to_invoice(_plain(paid))
