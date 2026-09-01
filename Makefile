@@ -1,4 +1,4 @@
-.PHONY: install test lint seed
+.PHONY: install test lint seed dev
 
 install:
 	uv sync
@@ -6,6 +6,9 @@ install:
 
 seed:
 	uv run python -m seed $(ARGS)
+
+dev:
+	./scripts/dev.sh
 
 test:
 	uv run pytest

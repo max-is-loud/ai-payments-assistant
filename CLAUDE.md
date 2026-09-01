@@ -5,7 +5,7 @@ in three parts: a FastAPI backend with a React SPA for the business owner, a
 Telegram bot for their external customers, and a seed script that populates a
 fresh Stripe sandbox.
 
-**Status:** design approved, implementation not started. The design of record is
+**Status:** implementation complete. The design of record is unchanged:
 `documentation/specs/2026-09-01-ai-payments-assistant-design.md`. Requirements
 are `documentation/assignment-brief.md`. Read both before changing architecture.
 
@@ -61,11 +61,13 @@ brief, the code conventions and their reasoning, and the tooling notes.
 ## Commands
 
 ```bash
-./scripts/check-docs.sh    # wikilink guard + link resolution; run before committing docs
+make install                # uv sync + npm install
+make seed                   # populate the sandbox; ARGS=--force / --clean / --today-only
+make dev                    # API, web, and Telegram bot together
+make test                   # uv run pytest
+make lint                   # uv run ruff check .
+./scripts/check-docs.sh     # wikilink guard + link resolution; run before committing docs
 ```
-
-Application commands (`make install`, `make seed`, `make dev`, `make test`)
-arrive with the implementation. Do not document a command here before it works.
 
 ## Git
 
