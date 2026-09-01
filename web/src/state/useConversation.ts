@@ -55,19 +55,25 @@ export function useConversation() {
       .catch((e) => setError(describe(e)));
   }, []);
 
-  // Route one SSE event into the assistant turn being built.
+  // Merge one SSE event into the turn it belongs to. A confirmation event also
+  // re-keys the turn's id to the action_id, in the same object, so approve/cancel
+  // (which patch by action_id) can find it. Transport-level failures are surfaced
+  // separately by the catch blocks in send/approve; SSE error frames only ever
+  // render as ERR lines in the Trail.
+  const mergeEvent = (t: Turn, event: AgentEvent): Turn => {
+    const next: Turn = { ...t, events: [...t.events, event] };
+    if (event.type === "answer") { next.text = String(event.data.text); if (event.data.result) next.result = event.data.result as ExecutedResult; }
+    if (event.type === "clarify") next.text = String(event.data.question);
+    if (event.type === "confirmation") {
+      next.confirmation = event.data as unknown as Confirmation;
+      next.id = String(event.data.action_id);
+    }
+    return next;
+  };
+
+  // Route one SSE event into the assistant turn being built, via a single dispatch.
   const absorb = (turnId: string, event: AgentEvent) =>
-    patch(turnId, (t) => {
-      const next: Turn = { ...t, events: [...t.events, event] };
-      if (event.type === "answer") { next.text = String(event.data.text); if (event.data.result) next.result = event.data.result as ExecutedResult; }
-      if (event.type === "clarify") next.text = String(event.data.question);
-      if (event.type === "confirmation") {
-        next.confirmation = event.data as unknown as Confirmation;
-        setTurns((prev) => prev.map((t2) => (t2.id === turnId ? { ...t2, id: String(event.data.action_id) } : t2)));
-      }
-      if (event.type === "error" && !event.data.recoverable) next.error = String(event.data.message);
-      return next;
-    });
+    setTurns((prev) => prev.map((t) => (t.id === turnId ? mergeEvent(t, event) : t)));
 
   const send = useCallback(async (text: string) => {
     const userId = crypto.randomUUID(), assistantId = crypto.randomUUID();
