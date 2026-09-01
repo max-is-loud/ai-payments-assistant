@@ -4,6 +4,7 @@ Handlers call these through `asyncio.to_thread`. Everything here runs the
 customer registry over a gateway bound to the customer from the binding row.
 """
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -31,6 +32,8 @@ from app.telegram.render import ERROR_TEXT, Reply, receipt_reply
 
 CUSTOMER_REGISTRY = build_customer_registry()
 CHANNEL = "telegram"
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -172,6 +175,7 @@ def confirm_action(deps: BotDeps, binding: TelegramBinding, action_id: str) -> R
         except (ActionError, StripeGatewayError) as exc:
             return Reply(f"I couldn't complete that: {exc}")
         except Exception:
+            log.exception("confirm_action failed for %s", action_id)
             return Reply(ERROR_TEXT)
     if execution.action == "pay_invoice":
         return receipt_reply(execution.result)
