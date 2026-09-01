@@ -1,11 +1,11 @@
 """uvicorn entrypoint: `uvicorn app.main:app`."""
 
-from app.actions.context import no_notifier
 from app.api.app import Services, create_app
 from app.db.engine import make_engine
 from app.llm.factory import build_backend
 from app.settings import load_settings
 from app.stripe_.owner_client import StripeOwnerGateway
+from app.telegram.notify import make_notifier
 
 
 def build_services() -> Services:
@@ -23,7 +23,7 @@ def build_services() -> Services:
         gateway=StripeOwnerGateway(settings.stripe_secret_key),
         llm=build_backend(settings),
         engine=make_engine(settings.database_url),
-        notify=no_notifier,
+        notify=make_notifier(settings.telegram_bot_token),
     )
 
 
