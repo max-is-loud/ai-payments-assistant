@@ -1,0 +1,26 @@
+"""The daily summary: facts always, narration on request."""
+
+from datetime import datetime
+from typing import Any
+
+from fastapi import APIRouter, Depends, Request
+
+from app.agent.events import to_jsonable
+from app.agent.narrator import narrate_summary
+from app.api.auth import require_owner
+from app.domain.periods import local_timezone
+from app.domain.summary import build_daily_facts
+
+router = APIRouter(prefix="/api/summary", dependencies=[Depends(require_owner)])
+
+
+@router.get("/today")
+def today(request: Request, narrate: bool = True) -> dict[str, Any]:
+    """Facts computed in Python; `narrate=false` skips the model for the live rail."""
+    services = request.app.state.services
+    facts = build_daily_facts(
+        services.gateway.list_payments(), services.gateway.list_invoices(status="open"),
+        datetime.now(local_timezone()),
+    )
+    text = narrate_summary(services.llm, facts) if narrate else None
+    return {"facts": to_jsonable(facts), "text": text}

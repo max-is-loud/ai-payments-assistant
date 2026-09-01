@@ -39,3 +39,8 @@ class CustomerContext:
     customer_name: str
     now: datetime
     idempotency_key: str | None = None
+
+
+def no_notifier(_telegram_id: int, _text: str, _url: str | None) -> bool:
+    """Notifier used when no Telegram token is configured: nothing is sent."""
+    return False
