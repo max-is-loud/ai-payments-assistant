@@ -38,3 +38,13 @@ telegram_bot.md
 # uncomment the exception below.
 /graphify-out/*
 # !/graphify-out/GRAPH_REPORT.md
+
+# Application
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+data/
+web/node_modules/
+web/dist/
