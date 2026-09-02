@@ -161,7 +161,11 @@
   that existed only inside the summary sentence; parsing prose in the
   browser was the wrong place to get them, so proposals now carry structured
   details alongside the sentence, and the card falls back to the sentence
-  when a restored proposal has none.
+  when a restored proposal has none. The hero also exposed the summary
+  narrator: with the Python figure of $2,578.00 sitting beside its prose, the
+  model's "$257,800.00" — cents read as dollars — was suddenly impossible to
+  miss. Both narrators now receive every amount pre-formatted as a dollar
+  string, so the prose can only copy a figure, never convert one.
 - **A design handoff as a spec.** The visual redesign was produced in Claude
   Design as a handoff bundle — tokens, component classes, reference React
   components, and a full-page kit — and treated as the spec: the bundle is

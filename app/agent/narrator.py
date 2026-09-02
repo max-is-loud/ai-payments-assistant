@@ -5,22 +5,29 @@ from typing import Any
 
 from app.agent.events import to_jsonable
 from app.agent.prompts import result_system, summary_system
+from app.domain.money import dollar_strings
 from app.domain.summary import DailyFacts
 from app.llm.base import ChatMessage, LLMBackend
+
+# Narrators copy figures, they never convert them: every amount reaches the
+# model already formatted as a dollar string (see `dollar_strings`).
 
 
 def narrate_summary(llm: LLMBackend, facts: DailyFacts) -> str:
     """The daily summary paragraph, from facts computed in Python."""
     return llm.complete(
         system=summary_system(),
-        messages=[ChatMessage(role="user", content=json.dumps(to_jsonable(facts)))],
+        messages=[ChatMessage(role="user", content=json.dumps(dollar_strings(to_jsonable(facts))))],
         max_tokens=400,
     ).strip()
 
 
 def narrate_result(llm: LLMBackend, *, action: str, summary: str, result: Any) -> str:
     """Confirm an executed action, anchored to the summary the user approved."""
-    payload = {"action": action, "approved_summary": summary, "result": to_jsonable(result)}
+    payload = {
+        "action": action, "approved_summary": summary,
+        "result": dollar_strings(to_jsonable(result)),
+    }
     return llm.complete(
         system=result_system(),
         messages=[ChatMessage(role="user", content=json.dumps(payload))],

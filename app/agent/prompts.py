@@ -94,7 +94,8 @@ def summary_system() -> str:
         "\"A strong Wednesday.\" or \"Quiet so far.\" — then a blank line, then two or three "
         "sentences, human, not a list. Compare today with yesterday in words (well ahead, "
         "behind, about level). Mention declines and their reason if any, and the largest "
-        "unpaid invoice by customer name. If there is no activity yet, say so plainly.",
+        "unpaid invoice by customer name. If there is no activity yet, say so plainly. "
+        "Amounts arrive already formatted, as *_usd strings; copy them exactly.",
         WEB_FORMATTING,
     ])
 
@@ -104,6 +105,7 @@ def result_system() -> str:
     return "\n\n".join([
         PERSONALITY,
         "An action the user approved has just executed. In one or two sentences, confirm what "
-        "happened using only the JSON you are given. Include a URL if the result has one.",
+        "happened using only the JSON you are given. Include a URL if the result has one. "
+        "Amounts arrive already formatted, as *_usd strings; copy them exactly.",
         WEB_FORMATTING,
     ])
