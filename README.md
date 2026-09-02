@@ -120,7 +120,9 @@ owner; a serif only where a person speaks to a person; mono for every number.
 
 The page speaks first. A masthead band carries the sync status; the hero
 renders the narrated summary, with a one-line aside from the model lifted
-into the serif greeting, beside today's figure and its pills; a three-week
+into the serif greeting — a blinking cursor holds its place while the model
+writes, and the text types in once it arrives — beside today's figure and
+its pills; a three-week
 area trend follows with its total, weekday average, and best day. The thread
 shows the agent trail, amber confirmation cards that lead with the figure and
 the name, three-column receipts, and an error strip with Retry. The rail

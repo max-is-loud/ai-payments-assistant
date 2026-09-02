@@ -1,10 +1,18 @@
 import type { DailyFacts, SummaryResponse } from "../api/types";
+import { revealMarkdown } from "../lib/reveal";
 import { splitAside } from "../lib/summary";
+import { useTypewriter } from "../state/useTypewriter";
+import { Cursor } from "./Cursor";
 import { ErrorStrip } from "./ErrorStrip";
 import { Eyebrow } from "./Eyebrow";
 import { Figure } from "./Figure";
 import { Markdown } from "./Markdown";
 import { Pill } from "./Pill";
+
+// The narrated text arrives whole; it is revealed as if streamed — the aside
+// first, then the lede — purely for the feel of an assistant that is speaking.
+const ASIDE_MS = 500;
+const LEDE_MS = 1500;
 
 function greeting(now: Date): string {
   const hour = now.getHours();
@@ -22,8 +30,9 @@ function change(today: number, yesterday: number): { label: string; tone: "in" |
   };
 }
 
-// The app speaks first. Left: the narrator's aside in the serif and the lede as
-// Markdown. Right: today's figure and pills, all computed from facts, never prose.
+// The app speaks first. Left: a cursor holds the aside's place while the
+// narrator works, then the aside and the lede type in. Right: today's figure
+// and pills, computed from facts, never prose.
 export function Hero({ summary, loading, error, facts, now = new Date() }: {
   summary: SummaryResponse | null;
   loading: boolean;
@@ -32,17 +41,30 @@ export function Hero({ summary, loading, error, facts, now = new Date() }: {
   now?: Date;
 }) {
   const split = summary?.text ? splitAside(summary.text) : null;
+  const aside = useTypewriter(split ? split.aside ?? "" : null, true, ASIDE_MS);
+  const lede = useTypewriter(split ? split.body : null, aside.done, LEDE_MS);
   const delta = facts ? change(facts.today.succeeded_total_cents, facts.yesterday.succeeded_total_cents) : null;
   return (
-    <section className="ldg-hero" aria-live="polite">
+    <section className="ldg-hero">
       <div>
         <Eyebrow>Today, in a sentence</Eyebrow>
         <h1 className="ldg-hero-title">
-          {greeting(now)} {split?.aside && <em>{split.aside}</em>}
+          {greeting(now)}{" "}
+          {loading && <em><Cursor /></em>}
+          {split?.aside && (
+            <em>
+              {split.aside.slice(0, aside.shown)}
+              {!aside.done && <Cursor />}
+            </em>
+          )}
         </h1>
-        {loading && <p className="ldg-empty">Reading today's activity…</p>}
         {error && <ErrorStrip>{error}</ErrorStrip>}
-        {split && <div className="ldg-lede"><Markdown>{split.body}</Markdown></div>}
+        {split && aside.done && (
+          <div className={lede.done ? "ldg-lede" : "ldg-lede typing"}>
+            <Markdown>{revealMarkdown(split.body, lede.shown)}</Markdown>
+            {!lede.done && <Cursor />}
+          </div>
+        )}
       </div>
       <div className="right">
         <Eyebrow>Taken today</Eyebrow>

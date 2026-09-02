@@ -278,4 +278,8 @@ needs a decision. Comparisons the assistant makes are drawn as well as said.
 None of it changes what the assistant can do; it changes how quickly the
 owner can read what it did. The design itself was produced in Claude Design
 and is checked in as a skill, so the visual language is as reproducible as
-the seed data.
+the seed data. One flourish is deliberate theatre: the narrated summary
+arrives whole, but a cursor blinks in the greeting while the model writes
+and the aside and lede then type in, bold figures kept intact mid-reveal, so
+the page reads as an assistant speaking rather than a form filling in.
+Reduced-motion readers get the text at once.
