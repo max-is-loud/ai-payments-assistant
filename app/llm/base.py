@@ -20,12 +20,17 @@ class ChatMessage:
 
 
 class LLMError(RuntimeError):
-    """The model call failed in a way the user should hear about, with a hint."""
+    """The model call failed in a way the user should hear about, with a hint.
 
-    def __init__(self, message: str, hint: str = "") -> None:
-        """Store the message and an optional fix."""
+    `detail` is developer text, typically the provider's raw response body. It
+    is logged by the API boundary and only sent to a client when DEBUG=1.
+    """
+
+    def __init__(self, message: str, hint: str = "", detail: str = "") -> None:
+        """Store the message, an optional fix, and optional developer detail."""
         super().__init__(message)
         self.hint = hint
+        self.detail = detail
 
 
 class LLMBackend(Protocol):

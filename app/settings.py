@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     owner_api_token: str = ""
     database_url: str = "sqlite:///./data/assistant.db"
+    # Off by default so the owner never sees raw provider bodies or exception
+    # names; DEBUG=1 puts that developer detail into error responses.
+    debug: bool = False
 
     @property
     def resolved_model(self) -> str:

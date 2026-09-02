@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from app.agent.loop import GIVE_UP_TEXT, TurnHooks, run_turn
+from app.agent.loop import GIVE_UP_TEXT, RETRY_TEXT, TurnHooks, run_turn
 from app.agent.schema import ActionSpec, Proposal, Registry
 from app.domain.policy import MAX_AGENT_ITERATIONS
 from tests.fakes.llm_fake import ScriptedLLM
@@ -126,3 +126,16 @@ def test_bad_json_and_unknown_actions_are_fed_back_not_fatal() -> None:
     events = _run(llm)
     assert [e.type for e in events] == ["error", "planning", "error", "planning", "answer"]
     assert "Unknown action" in llm.calls[2][1][-1].content
+
+
+def test_planner_mistakes_read_as_a_retry_with_the_raw_text_kept_as_detail() -> None:
+    """The owner reads one plain sentence; the parse error rides along as developer detail.
+
+    The model still receives the exact error as feedback (asserted above); this
+    only changes what the trail shows for the same step.
+    """
+    llm = ScriptedLLM(["not json at all", _call("answer", text="ok")])
+    error = _run(llm)[0]
+    assert error.type == "error"
+    assert error.data["code"] == "planner_retry" and error.data["message"] == RETRY_TEXT
+    assert "JSON" not in error.data["message"] and "JSON" in error.data["detail"]

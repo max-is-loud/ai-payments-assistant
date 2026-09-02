@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -13,12 +14,16 @@ from app.api.app import Services, create_app
 from app.db import escalations, pending_actions
 from app.db.clock import utcnow
 from app.db.engine import session_scope
+from app.llm.base import LLMError
 from app.settings import Settings
 from tests.fakes.llm_fake import ScriptedLLM
 from tests.fakes.stripe_fake import FakeStripeGateway
 
 AUTH = {"Authorization": "Bearer test-token"}
 NOW = datetime.now(UTC)
+SDK_BODY = "Error code: 400 - {'type': 'error', 'error': {'message': 'bad request'}}"
+
+World = tuple[TestClient, FakeStripeGateway, ScriptedLLM, list[Any]]
 
 
 def _step(action: str, **parameters: Any) -> str:
@@ -38,9 +43,15 @@ def _events(response: Any) -> list[tuple[str, dict[str, Any]]]:
     return out
 
 
-@pytest.fixture
-def world(engine: Engine) -> Iterator[tuple[TestClient, FakeStripeGateway, ScriptedLLM, list[Any]]]:
-    """A test app over fakes: Maya paid $90 today; the LLM script is filled per test."""
+@contextmanager
+def _world(
+    engine: Engine, *, debug: bool = False, raise_server_exceptions: bool = True
+) -> Iterator[World]:
+    """A test app over fakes: Maya paid $90 today; the LLM script is filled per test.
+
+    `raise_server_exceptions=False` lets a test read the 500 envelope the
+    catch-all handler writes, instead of TestClient re-raising the cause.
+    """
     fake = FakeStripeGateway()
     fake.add_customer("cus_maya", "Maya Chen")
     fake.add_customer("cus_acme", "Acme Corp")
@@ -50,13 +61,40 @@ def world(engine: Engine) -> Iterator[tuple[TestClient, FakeStripeGateway, Scrip
     sent: list[Any] = []
     services = Services(
         settings=Settings(
-            _env_file=None, owner_api_token="test-token", stripe_secret_key="sk_test_x"
+            _env_file=None, owner_api_token="test-token", stripe_secret_key="sk_test_x",
+            debug=debug,
         ),
         gateway=fake, llm=llm, engine=engine,
         notify=lambda tid, text, url: (sent.append((tid, text, url)), True)[1],
     )
-    with TestClient(create_app(services)) as client:
+    app = create_app(services)
+    with TestClient(app, raise_server_exceptions=raise_server_exceptions) as client:
         yield client, fake, llm, sent
+
+
+@pytest.fixture
+def world(engine: Engine) -> Iterator[World]:
+    """The default world: debug off, server exceptions re-raised into the test."""
+    with _world(engine) as built:
+        yield built
+
+
+def _boom(*_args: Any, **_kwargs: Any) -> Any:
+    """Stand in for a gateway method that fails in a way nothing anticipated."""
+    raise RuntimeError("boom")
+
+
+def _llm_failure() -> LLMError:
+    """The shape a provider status error takes once a backend has translated it."""
+    return LLMError("Anthropic API error 400.", hint="Try again in a moment.", detail=SDK_BODY)
+
+
+def _stream(
+    client: TestClient, path: str, body: dict[str, Any]
+) -> list[tuple[str, dict[str, Any]]]:
+    """POST a streaming route and return its parsed frames."""
+    with client.stream("POST", path, json=body, headers=AUTH) as r:
+        return _events(r)
 
 
 def test_missing_token_returns_envelope_with_hint(world: Any) -> None:
@@ -207,3 +245,61 @@ def test_escalation_approval_and_binding_revocation(world: Any, engine: Engine) 
     assert client.post("/api/escalations/esc_nope/approve", headers=AUTH).status_code == 404
     revoked = client.delete("/api/customers/cus_acme/telegram-binding", headers=AUTH)
     assert revoked.json() == {"revoked": 0}
+
+
+def test_error_frame_hides_developer_detail_by_default(world: Any) -> None:
+    """The owner sees the message and the fix, never the provider's raw response body."""
+    client, _fake, llm, _ = world
+    llm._responses.append(_llm_failure())
+    events = _stream(client, "/api/conversations/c-err/messages", {"text": "hi"})
+    assert [e for e, _ in events] == ["error"]
+    frame = events[0][1]
+    assert frame["code"] == "llm_error" and "detail" not in frame
+    assert SDK_BODY not in json.dumps(frame)
+
+
+def test_error_frame_carries_developer_detail_with_debug(engine: Engine) -> None:
+    """DEBUG=1 is the one switch that puts raw provider text on the wire."""
+    with _world(engine, debug=True) as (client, _fake, llm, _):
+        llm._responses.append(_llm_failure())
+        events = _stream(client, "/api/conversations/c-dbg/messages", {"text": "hi"})
+    assert events[0][1]["detail"] == SDK_BODY
+
+
+def test_unhandled_route_exception_returns_the_envelope(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A crash still answers `{error: {code, message, hint}}`, not 'Internal Server Error'."""
+    with _world(engine, raise_server_exceptions=False) as (client, fake, _llm, _):
+        monkeypatch.setattr(fake, "list_payments", _boom)
+        response = client.get("/api/summary/today?narrate=false", headers=AUTH)
+    assert response.status_code == 500
+    body = response.json()["error"]
+    assert body["code"] == "internal_error" and "detail" not in body
+    assert "boom" not in json.dumps(body)
+
+
+def test_unhandled_route_exception_names_the_cause_with_debug(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With DEBUG=1 the envelope says which exception fired, so the log is the second stop."""
+    with _world(engine, debug=True, raise_server_exceptions=False) as (client, fake, _llm, _):
+        monkeypatch.setattr(fake, "list_payments", _boom)
+        response = client.get("/api/summary/today?narrate=false", headers=AUTH)
+    assert response.json()["error"]["detail"] == "RuntimeError: boom"
+
+
+def test_crash_mid_stream_ends_with_an_error_frame(
+    world: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An exception after the stream has opened closes the turn with an error, not silence.
+
+    Headers are already sent by then, so no HTTP handler can run; the SSE
+    boundary itself has to turn the crash into a final frame the web app renders.
+    """
+    client, fake, llm, _ = world
+    monkeypatch.setattr(fake, "list_customers", _boom)
+    llm._responses.append(_step("find_customer", query="maya"))
+    events = _stream(client, "/api/conversations/c-crash/messages", {"text": "who is maya"})
+    assert events[-1][0] == "error"
+    assert events[-1][1]["code"] == "internal_error" and "detail" not in events[-1][1]

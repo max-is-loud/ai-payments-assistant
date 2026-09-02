@@ -104,11 +104,12 @@ def post_message(conversation_id: str, body: MessageIn, request: Request) -> Any
                         conversations.append(session, conversation_id, "assistant", waiting)
                     yield event
             except LLMError as exc:
-                yield AgentEvent(
-                    "error", {"code": "llm_error", "message": str(exc), "hint": exc.hint}
-                )
+                yield AgentEvent("error", {
+                    "code": "llm_error", "message": str(exc), "hint": exc.hint,
+                    "detail": exc.detail,
+                })
 
-    return sse_response(events())
+    return sse_response(events(), debug=services.settings.debug)
 
 
 @router.post("/{conversation_id}/confirm")
@@ -140,9 +141,10 @@ def confirm(
                 )
                 return
             except StripeGatewayError as exc:
-                yield AgentEvent(
-                    "error", {"code": "stripe_error", "message": str(exc), "hint": exc.hint}
-                )
+                yield AgentEvent("error", {
+                    "code": "stripe_error", "message": str(exc), "hint": exc.hint,
+                    "detail": exc.detail,
+                })
                 return
             yield AgentEvent("action", {"name": execution.action, "args": execution.parameters})
             yield AgentEvent(
@@ -161,7 +163,7 @@ def confirm(
                 {"text": text, "result": {"action": execution.action, "data": execution.result}},
             )
 
-    return sse_response(events())
+    return sse_response(events(), debug=services.settings.debug)
 
 
 @router.post("/{conversation_id}/cancel")

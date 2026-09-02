@@ -14,13 +14,15 @@ from app.domain.models import Customer, Invoice, Payment, Refund
 class StripeGatewayError(RuntimeError):
     """A Stripe call failed in a way the user can act on.
 
-    `hint` is surfaced in the API error envelope; keep it concrete.
+    `hint` is surfaced in the API error envelope; keep it concrete. `detail`
+    is the SDK's own text, logged by the boundary and sent only when DEBUG=1.
     """
 
-    def __init__(self, message: str, hint: str = "") -> None:
-        """Store the message and an optional fix."""
+    def __init__(self, message: str, hint: str = "", detail: str = "") -> None:
+        """Store the message, an optional fix, and optional developer detail."""
         super().__init__(message)
         self.hint = hint
+        self.detail = detail
 
 
 class NotFound(StripeGatewayError):

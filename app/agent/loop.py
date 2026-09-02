@@ -21,6 +21,7 @@ from app.llm.base import ChatMessage, LLMBackend, extract_json_object
 from app.stripe_.gateway import StripeGatewayError
 
 GIVE_UP_TEXT = "I couldn't finish that in a few steps. Could you rephrase or narrow it down?"
+RETRY_TEXT = "I made a mistake on that step and am trying again."
 
 
 class ProposeHook(Protocol):
@@ -63,6 +64,18 @@ def _feedback(
     )
 
 
+def _retry_event(exc: Exception) -> AgentEvent:
+    """The trail line for a planner mistake the loop is about to correct.
+
+    The owner reads one sentence. The raw parse or validation text is kept as
+    `detail`, which the API boundary logs and sends only when DEBUG=1; the
+    model itself still gets the exact text through `_feedback`.
+    """
+    return AgentEvent("error", {
+        "code": "planner_retry", "message": RETRY_TEXT, "hint": "", "detail": str(exc),
+    })
+
+
 def run_turn(
     *,
     llm: LLMBackend,
@@ -90,7 +103,7 @@ def run_turn(
         try:
             call = parse_call(extract_json_object(raw))
         except (ValueError, ActionError) as exc:
-            yield AgentEvent("error", {"message": str(exc)})
+            yield _retry_event(exc)
             _feedback(transcript, raw, {"error": str(exc)}, "invalid step")
             continue
         if call.reasoning:
@@ -99,7 +112,7 @@ def run_turn(
             try:
                 terminal = validate_params(TERMINAL_ACTIONS[call.action], call.parameters)
             except ValidationError as exc:
-                yield AgentEvent("error", {"message": str(exc)})
+                yield _retry_event(exc)
                 _feedback(transcript, raw, {"error": f"Invalid {call.action}: {exc}"}, call.action)
                 continue
             yield AgentEvent(call.action, terminal.model_dump())  # type: ignore[arg-type]
@@ -107,7 +120,7 @@ def run_turn(
         try:
             spec, params = resolve(registry, call)
         except ActionError as exc:
-            yield AgentEvent("error", {"message": str(exc)})
+            yield _retry_event(exc)
             _feedback(transcript, raw, {"error": str(exc)}, call.action)
             continue
         args = params.model_dump(mode="json")
