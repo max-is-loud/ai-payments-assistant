@@ -63,13 +63,24 @@ export function useDashboard(onMutation: (cb: () => void) => () => void) {
   }, []);
 
   useEffect(() => {
+    // React's development StrictMode mounts this twice; the model writes a
+    // different narration each time, so the cleaned-up mount's answer must
+    // not replace the one that is already typing in.
+    let cancelled = false;
     apiFetch<SummaryResponse>("/api/summary/today")
-      .then((s) => { setSummary(s); setFacts(s.facts); })
-      .catch((e) => setSummaryError(describeError(e)));
+      .then((s) => {
+        if (cancelled) return;
+        setSummary(s);
+        setFacts(s.facts);
+      })
+      .catch((e) => {
+        if (!cancelled) setSummaryError(describeError(e));
+      });
     refresh();
     const unsubscribe = onMutation(refresh);
     const timer = setInterval(refresh, REFRESH_MS);
     return () => {
+      cancelled = true;
       clearInterval(timer);
       unsubscribe();
     };

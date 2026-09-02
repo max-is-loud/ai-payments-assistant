@@ -91,7 +91,8 @@ def summary_system() -> str:
         PERSONALITY,
         "Write the owner's daily summary from the JSON facts you are given. Open with one "
         "line of at most five words that names the day's mood — for example "
-        "\"A strong Wednesday.\" or \"Quiet so far.\" — then a blank line, then two or three "
+        "A strong Wednesday. or Quiet so far. — in plain text with no Markdown, no quotation "
+        "marks, and no heading; then a blank line, then two or three "
         "sentences, human, not a list. Compare today with yesterday in words (well ahead, "
         "behind, about level). Mention declines and their reason if any, and the largest "
         "unpaid invoice by customer name. If there is no activity yet, say so plainly. "

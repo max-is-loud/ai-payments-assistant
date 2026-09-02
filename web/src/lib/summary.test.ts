@@ -17,6 +17,18 @@ describe("splitAside", () => {
     expect(splitAside(text)).toEqual({ aside: null, body: text });
   });
 
+  it("strips inline Markdown from the aside: it is set in the serif, never bold or a heading", () => {
+    expect(splitAside("**A quiet day.**\n\nBody.").aside).toBe("A quiet day.");
+    expect(splitAside("_Quiet so far._\n\nBody.").aside).toBe("Quiet so far.");
+    expect(splitAside("## Steady Tuesday.\n\nBody.").aside).toBe("Steady Tuesday.");
+    expect(splitAside('"A strong Wednesday."\n\nBody.').aside).toBe("A strong Wednesday.");
+    expect(splitAside("**A quiet day.**\n\nBody.").body).toBe("Body.");
+  });
+
+  it("counts the aside's words after stripping, so markers never disqualify a short line", () => {
+    expect(splitAside("**Quiet so far.**\n\nBody.").aside).toBe("Quiet so far.");
+  });
+
   it("treats a single paragraph as body only", () => {
     expect(splitAside("Nothing taken yet today.")).toEqual({
       aside: null,
