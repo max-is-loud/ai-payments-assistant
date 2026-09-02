@@ -83,6 +83,6 @@ a { color: var(--accent-ink); }
 .esc { padding: 10px 0; border-bottom: 1px solid var(--rule); } .esc:last-child { border-bottom: 0; }
 .esc .meta { color: var(--ink-3); font-size: 13px; }
 .empty { color: var(--ink-3); font-size: 14px; }
-.error { color: var(--out); font-size: 14px; }
+.error { color: var(--out); font-size: 14px; white-space: pre-wrap; }
 
 @media (prefers-reduced-motion: reduce) { .trail li, .confirm { animation: none; } }

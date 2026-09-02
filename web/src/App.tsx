@@ -4,7 +4,7 @@ import { Composer } from "./components/Composer";
 import { Trail } from "./components/Trail";
 import { ConfirmationCard } from "./components/ConfirmationCard";
 import { ResultCard } from "./components/ResultCard";
-import { ApiError, apiFetch } from "./api/client";
+import { apiFetch, describeError } from "./api/client";
 import type { DailyFacts, Escalation, SummaryResponse } from "./api/types";
 import { SummaryCard } from "./components/SummaryCard";
 import { TodayRail } from "./components/TodayRail";
@@ -28,7 +28,7 @@ export default function App() {
   useEffect(() => {
     apiFetch<SummaryResponse>("/api/summary/today")
       .then((s) => { setSummary(s); setFacts(s.facts); })
-      .catch((e) => setSummaryError(e instanceof ApiError && e.hint ? `${e.message} ${e.hint}` : String(e)));
+      .catch((e) => setSummaryError(describeError(e)));
     apiFetch<Escalation[]>("/api/escalations").then(setEscalations).catch(() => undefined);
     const unsubscribe = onMutation(refreshFacts);
     const timer = setInterval(refreshFacts, 30_000);

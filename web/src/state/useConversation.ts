@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, apiFetch, streamTurn } from "../api/client";
+import { apiFetch, describeError, streamTurn } from "../api/client";
 import type { AgentEvent, Confirmation, ExecutedResult, HistoryResponse } from "../api/types";
 
 export interface Turn {
@@ -27,11 +27,6 @@ function conversationId(): string {
   }
 }
 
-function describe(error: unknown): string {
-  if (error instanceof ApiError) return error.hint ? `${error.message} ${error.hint}` : error.message;
-  return error instanceof Error ? error.message : String(error);
-}
-
 export function useConversation() {
   const id = useRef(conversationId());
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -57,7 +52,7 @@ export function useConversation() {
         if (history.pending) restored.push({ id: history.pending.action_id, role: "assistant", events: [], confirmation: history.pending });
         setTurns(restored);
       })
-      .catch((e) => setError(describe(e)));
+      .catch((e) => setError(describeError(e)));
   }, []);
 
   // Merge one SSE event into the turn it belongs to. A confirmation event also
@@ -87,7 +82,7 @@ export function useConversation() {
     try {
       await streamTurn(`/api/conversations/${id.current}/messages`, { text }, (e) => absorb(assistantId, e));
     } catch (e) {
-      patch(assistantId, (t) => ({ ...t, error: describe(e) }));
+      patch(assistantId, (t) => ({ ...t, error: describeError(e) }));
     } finally {
       setBusy(false);
     }
@@ -103,7 +98,7 @@ export function useConversation() {
         (e) => absorb(resultId, e), { "Idempotency-Key": actionId });
       notifyMutation();
     } catch (e) {
-      patch(resultId, (t) => ({ ...t, error: describe(e) }));
+      patch(resultId, (t) => ({ ...t, error: describeError(e) }));
     } finally {
       setBusy(false);
     }
@@ -114,7 +109,7 @@ export function useConversation() {
       await apiFetch(`/api/conversations/${id.current}/cancel`, { method: "POST", body: JSON.stringify({ action_id: actionId }) });
       patch(actionId, (t) => ({ ...t, decided: "cancelled" }));
     } catch (e) {
-      setError(describe(e));
+      setError(describeError(e));
     }
   }, []);
 

@@ -6,12 +6,14 @@ export class ApiError extends Error {
   status: number;
   code: string;
   hint: string;
+  detail: string;
 
-  constructor(status: number, code: string, message: string, hint: string) {
+  constructor(status: number, code: string, message: string, hint: string, detail = "") {
     super(message);
     this.status = status;
     this.code = code;
     this.hint = hint;
+    this.detail = detail;
   }
 }
 
@@ -20,12 +22,31 @@ function headers(extra: Record<string, string> = {}): Record<string, string> {
 }
 
 async function raise(response: Response): Promise<never> {
-  let code = "http_error", message = response.statusText, hint = "";
+  // Every API failure is `{error: {code, message, hint}}`, so anything else came
+  // from in front of the API (the dev proxy with nothing listening behind it).
+  // The status is then all there is to report, in words rather than statusText.
+  let code = "http_error", hint = "", detail = "";
+  let message = `The assistant API didn't answer (HTTP ${response.status}). Is it running?`;
   try {
     const body = await response.json();
-    code = body.error?.code ?? code; message = body.error?.message ?? message; hint = body.error?.hint ?? "";
+    if (body?.error?.message) {
+      code = body.error.code ?? code; message = body.error.message;
+      hint = body.error.hint ?? ""; detail = body.error.detail ?? "";
+    }
   } catch { /* non-JSON error body */ }
-  throw new ApiError(response.status, code, message, hint);
+  throw new ApiError(response.status, code, message, hint, detail);
+}
+
+// One sentence for the owner. `detail` is only ever set when the API runs with
+// DEBUG=1, and goes on its own line so it reads as the developer note it is.
+export function describeError(error: unknown): string {
+  if (error instanceof ApiError) {
+    const text = error.hint ? `${error.message} ${error.hint}` : error.message;
+    return error.detail ? `${text}\n${error.detail}` : text;
+  }
+  // fetch rejects with a TypeError when the request never got a response at all.
+  if (error instanceof TypeError) return "Couldn't reach the assistant API. Is it running?";
+  return error instanceof Error ? error.message : String(error);
 }
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {

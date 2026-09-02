@@ -7,18 +7,46 @@ const STAMP: Record<AgentEvent["type"], { label: string; cls: string }> = {
   error: { label: "ERR", cls: "err" },
 };
 
+// An action that failed inside a turn arrives as an observation whose result is
+// {error, hint} — the shape the loop feeds back to the model. The owner should
+// read it as a sentence, not as the JSON block a successful result gets.
+type Failure = { error: string; hint?: string };
+
+function failure(result: unknown): Failure | null {
+  if (typeof result !== "object" || result === null || !("error" in result)) return null;
+  return result as Failure;
+}
+
+function withHint(text: string, hint: unknown): string {
+  return hint ? `${text} — ${String(hint)}` : text;
+}
+
 function line(event: AgentEvent): JSX.Element {
   const d = event.data;
   switch (event.type) {
     case "planning": return <span>{String(d.reasoning)}</span>;
     case "action": return <span><span className="mono">{String(d.name)}</span> {JSON.stringify(d.args)}</span>;
-    case "observation": return (
-      <details><summary>{String(d.name)} returned</summary><pre className="mono">{JSON.stringify(d.result, null, 2)}</pre></details>
-    );
+    case "observation": {
+      const failed = failure(d.result);
+      if (failed) return <span><span className="mono">{String(d.name)}</span> failed: {withHint(failed.error, failed.hint)}</span>;
+      return (
+        <details><summary>{String(d.name)} returned</summary><pre className="mono">{JSON.stringify(d.result, null, 2)}</pre></details>
+      );
+    }
     case "confirmation": return <span>Waiting for your approval</span>;
-    case "error": return <span>{String(d.message)}{d.hint ? ` — ${String(d.hint)}` : ""}</span>;
+    // `detail` is only present when the API runs with DEBUG=1; the server decides.
+    case "error": return (
+      <>
+        <span>{withHint(String(d.message), d.hint)}</span>
+        {d.detail ? <pre className="mono">{String(d.detail)}</pre> : null}
+      </>
+    );
     default: return <span />;
   }
+}
+
+function stamp(event: AgentEvent): { label: string; cls: string } {
+  return event.type === "observation" && failure(event.data.result) ? STAMP.error : STAMP[event.type];
 }
 
 export function Trail({ events }: { events: AgentEvent[] }) {
@@ -28,7 +56,7 @@ export function Trail({ events }: { events: AgentEvent[] }) {
     <ul className="trail" aria-label="Agent activity">
       {shown.map((e, i) => (
         <li key={i}>
-          <span className={`stamp ${STAMP[e.type].cls}`}>{STAMP[e.type].label}</span>
+          <span className={`stamp ${stamp(e).cls}`}>{stamp(e).label}</span>
           <div className="line">{line(e)}</div>
         </li>
       ))}
