@@ -19,8 +19,10 @@ from app.actions.owner_mutations import (
     refund_payment,
 )
 from app.actions.owner_reads import (
+    ComparePeriodsParams,
     FindCustomerParams,
     QueryPaymentsParams,
+    compare_periods,
     find_customer,
     query_payments,
 )
@@ -222,7 +224,8 @@ def test_approve_escalation_notifies_once_with_the_hosted_url(
 def test_owner_registry_matches_the_design() -> None:
     """The action names are the spec's table, with refund_payment for refund_charge."""
     assert build_owner_registry().names() == [
-        "summarize_day", "query_payments", "find_customer", "list_invoices", "create_invoice",
+        "summarize_day", "query_payments", "compare_periods", "find_customer", "list_invoices",
+        "create_invoice",
         "refund_payment", "create_payment_link", "list_escalations", "approve_escalation",
     ]
 
@@ -238,12 +241,13 @@ def test_query_payments_with_a_range_includes_zero_filled_daily_totals(
         week = query_payments(
             ctx, QueryPaymentsParams(start_date=date(2026, 8, 26), end_date=date(2026, 9, 1))
         )
-        assert [(d["date"], d["succeeded_total_cents"]) for d in week["daily_totals"]] == [
+        days = week["display"]["daily_totals"]
+        assert [(d["date"], d["succeeded_total_cents"]) for d in days] == [
             ("2026-08-26", 5000), ("2026-08-27", 0), ("2026-08-28", 0), ("2026-08-29", 0),
             ("2026-08-30", 0), ("2026-08-31", 0), ("2026-09-01", 9000),
         ]
         unbounded = query_payments(ctx, QueryPaymentsParams(customer_id="cus_maya"))
-        assert "daily_totals" not in unbounded
+        assert "display" not in unbounded
 
 
 def test_describe_carries_structured_details_for_the_confirmation_card(
@@ -285,4 +289,63 @@ def test_describe_carries_structured_details_for_the_confirmation_card(
         assert escalation.details == ProposalDetails(
             amount_cents=240000, counterparty="Acme Corp",
             meta="Sends a Stripe payment link on Telegram",
+        )
+
+
+def test_compare_periods_computes_both_totals_and_the_change_in_python(
+    engine: Engine, account: FakeStripeGateway
+) -> None:
+    """The headline demo question gets an exact answer; the planner never adds up rows itself."""
+    with session_scope(engine) as session:
+        ctx = OwnerContext(
+            gateway=account, session=session, now=NOW, notify=lambda *_: True
+        )
+        result = compare_periods(
+            ctx,
+            ComparePeriodsParams(
+                first_start_date=date(2026, 9, 1), first_end_date=date(2026, 9, 1),
+                second_start_date=date(2026, 8, 26), second_end_date=date(2026, 8, 26),
+            ),
+        )
+        # Ranges are ordered by date whatever order the planner passed them in.
+        assert result["earlier"]["start_date"] == "2026-08-26"
+        assert result["earlier"]["succeeded_total_cents"] == 5000
+        assert result["later"]["start_date"] == "2026-09-01"
+        assert result["later"]["succeeded_total_cents"] == 9000
+        assert result["change_cents"] == 4000
+        assert result["change_percent"] == 80.0
+        display = result["display"]
+        assert [d["succeeded_total_cents"] for d in display["earlier_daily_totals"]] == [5000]
+        assert [d["succeeded_total_cents"] for d in display["later_daily_totals"]] == [9000]
+
+
+def test_compare_periods_has_no_percentage_against_an_empty_baseline(
+    engine: Engine, account: FakeStripeGateway
+) -> None:
+    """Dividing by an empty week is not a comparison; the change is stated in dollars only."""
+    with session_scope(engine) as session:
+        ctx = OwnerContext(
+            gateway=account, session=session, now=NOW, notify=lambda *_: True
+        )
+        result = compare_periods(
+            ctx,
+            ComparePeriodsParams(
+                first_start_date=date(2026, 8, 19), first_end_date=date(2026, 8, 25),
+                second_start_date=date(2026, 8, 26), second_end_date=date(2026, 9, 1),
+            ),
+        )
+        assert result["earlier"]["succeeded_total_cents"] == 0
+        assert result["later"]["succeeded_total_cents"] == 14000
+        assert result["change_cents"] == 14000
+        assert result["change_percent"] is None
+        assert len(result["display"]["earlier_daily_totals"]) == 7
+        assert len(result["display"]["later_daily_totals"]) == 7
+
+
+def test_compare_periods_rejects_a_reversed_range() -> None:
+    """A range ending before it starts would total nothing silently; the planner is told."""
+    with pytest.raises(ValueError, match="on or after"):
+        ComparePeriodsParams(
+            first_start_date=date(2026, 8, 25), first_end_date=date(2026, 8, 19),
+            second_start_date=date(2026, 8, 26), second_end_date=date(2026, 9, 1),
         )

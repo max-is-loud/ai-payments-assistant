@@ -10,7 +10,7 @@ const ranged = (start: string, cents: number): AgentEvent => ({
   type: "observation",
   data: { name: "query_payments", result: {
     period: `${start} to ${start}`, succeeded_total_cents: cents, succeeded_count: 1,
-    daily_totals: [{ date: start, succeeded_total_cents: cents, succeeded_count: 1 }],
+    display: { daily_totals: [{ date: start, succeeded_total_cents: cents, succeeded_count: 1 }] },
   } },
 });
 

@@ -1,16 +1,17 @@
 """Read-only owner actions. Every number returned is computed here, not by the model."""
 
-from datetime import date
+from collections.abc import Sequence
+from datetime import date, timedelta
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.actions.context import OwnerContext
 from app.agent.events import to_jsonable
-from app.agent.schema import NoParams
+from app.agent.schema import DISPLAY_KEY, NoParams
 from app.db import escalations
 from app.domain.models import Invoice, Payment
-from app.domain.periods import date_range_window
+from app.domain.periods import Window, date_range_window
 from app.domain.series import DayTotals, daily_totals
 from app.domain.summary import DailyFacts, build_daily_facts, period_totals
 
@@ -31,6 +32,25 @@ class QueryPaymentsParams(BaseModel):
             "Raise it when the user asks for all of them"
         ),
     )
+
+
+class ComparePeriodsParams(BaseModel):
+    """Two inclusive date ranges to compare; the order they are given in does not matter."""
+
+    first_start_date: date = Field(..., description="First day of one period, inclusive")
+    first_end_date: date = Field(..., description="Last day of that period, inclusive")
+    second_start_date: date = Field(..., description="First day of the other period, inclusive")
+    second_end_date: date = Field(..., description="Last day of the other period, inclusive")
+
+    @model_validator(mode="after")
+    def _ends_follow_starts(self) -> "ComparePeriodsParams":
+        """A reversed range would silently total nothing; tell the planner instead."""
+        if (
+            self.first_end_date < self.first_start_date
+            or self.second_end_date < self.second_start_date
+        ):
+            raise ValueError("each end date must be on or after its start date")
+        return self
 
 
 class FindCustomerParams(BaseModel):
@@ -92,8 +112,9 @@ def query_payments(ctx: OwnerContext, params: QueryPaymentsParams) -> dict[str, 
         Dictionary with period label, totals over every match, and the first
         `limit` rows. `matched_count` and `listed_count` differ when the list
         is cut short, so the planner can say so or ask for more instead of
-        presenting a partial list as complete. With a date range, `daily_totals`
-        adds one zero-filled entry per day so the web app can draw the period.
+        presenting a partial list as complete. With a date range, the interface-only
+        `display.daily_totals` adds one zero-filled entry per day so the web app
+        can draw the period; the planner never sees it.
     """
     payments = ctx.gateway.list_payments()
     if params.customer_id:
@@ -132,8 +153,64 @@ def query_payments(ctx: OwnerContext, params: QueryPaymentsParams) -> dict[str, 
         "payments": [_payment_row(p) for p in payments[: params.limit]],
     }
     if daily is not None:
-        result["daily_totals"] = to_jsonable(daily)
+        result[DISPLAY_KEY] = {"daily_totals": to_jsonable(daily)}
     return result
+
+
+
+def _period_report(payments: Sequence[Payment], window: Window) -> dict[str, Any]:
+    """One period's totals with its bounds spelled out, for compare_periods."""
+    totals = period_totals(payments, window)
+    return {
+        "period": totals.label,
+        "start_date": window.start.date().isoformat(),
+        "end_date": (window.end - timedelta(days=1)).date().isoformat(),
+        "succeeded_count": totals.succeeded_count,
+        "succeeded_total_cents": totals.succeeded_total_cents,
+        "refunded_total_cents": totals.refunded_total_cents,
+        "declined_count": totals.declined_count,
+    }
+
+
+def compare_periods(ctx: OwnerContext, params: ComparePeriodsParams) -> dict[str, Any]:
+    """Totals for two date ranges and the change between them, all computed here.
+
+    Exists because "last week versus the week before" is the question the
+    owner asks most, and a planner handed two lists of rows will start adding
+    them up itself. Here it gets both totals and the change as facts.
+
+    Args:
+        ctx: Owner context with gateway access.
+        params: The two inclusive ranges, in either order.
+
+    Returns:
+        `earlier` and `later` period reports ordered by start date, the change
+        in cents and, when the earlier period took anything, in percent to one
+        decimal. The interface-only `display` carries each period's zero-filled
+        daily totals for the web app's chart; the planner never sees it.
+    """
+    payments = ctx.gateway.list_payments()
+    tz = ctx.now.tzinfo
+    windows = sorted(
+        (
+            date_range_window(params.first_start_date, params.first_end_date, tz),
+            date_range_window(params.second_start_date, params.second_end_date, tz),
+        ),
+        key=lambda w: w.start,
+    )
+    earlier, later = (_period_report(payments, w) for w in windows)
+    baseline = earlier["succeeded_total_cents"]
+    change = later["succeeded_total_cents"] - baseline
+    return {
+        "earlier": earlier,
+        "later": later,
+        "change_cents": change,
+        "change_percent": round(100 * change / baseline, 1) if baseline else None,
+        DISPLAY_KEY: {
+            "earlier_daily_totals": to_jsonable(daily_totals(payments, windows[0])),
+            "later_daily_totals": to_jsonable(daily_totals(payments, windows[1])),
+        },
+    }
 
 
 def find_customer(ctx: OwnerContext, params: FindCustomerParams) -> dict[str, Any]:

@@ -35,6 +35,12 @@ class NoParams(BaseModel):
 
 TERMINAL_ACTIONS: dict[str, type[BaseModel]] = {"answer": AnswerParams, "clarify": ClarifyParams}
 
+# A read result may carry this key: an object for the interface only (per-day
+# bars for a chart). The loop strips it from what the model reads, so the
+# planner never holds a raw series to do its own arithmetic on; the trail and
+# the web app receive the whole result.
+DISPLAY_KEY = "display"
+
 
 class ActionHandler(Protocol):
     """Executes an action against the channel's context object."""

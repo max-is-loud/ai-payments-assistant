@@ -16,7 +16,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.agent.events import AgentEvent, to_jsonable
 from app.agent.executor import ActionError, parse_call, resolve, validate_params
-from app.agent.schema import TERMINAL_ACTIONS, ActionSpec, Registry
+from app.agent.schema import DISPLAY_KEY, TERMINAL_ACTIONS, ActionSpec, Registry
 from app.domain.policy import MAX_AGENT_ITERATIONS
 from app.llm.base import ChatMessage, LLMBackend, extract_json_object
 from app.stripe_.gateway import StripeGatewayError
@@ -65,6 +65,18 @@ def _feedback(
     transcript.append(
         ChatMessage(role="user", content=f"Observation for {label}: {observation_json}")
     )
+
+
+def for_model(observation: Any) -> Any:
+    """The observation as the planner reads it: the result minus interface-only data.
+
+    Per-day totals in the transcript once led the planner to run a single
+    two-week query and sum the halves itself — the arithmetic this loop exists
+    to keep out of the model. See `DISPLAY_KEY`.
+    """
+    if isinstance(observation, dict) and DISPLAY_KEY in observation:
+        return {key: value for key, value in observation.items() if key != DISPLAY_KEY}
+    return observation
 
 
 def _retry_event(exc: Exception) -> AgentEvent:
@@ -155,5 +167,5 @@ def run_turn(
             hooks.audit(spec.name, args, to_jsonable(result), False)
         observation = to_jsonable(result)
         yield AgentEvent("observation", {"name": spec.name, "result": observation})
-        _feedback(transcript, raw, observation, spec.name)
+        _feedback(transcript, raw, for_model(observation), spec.name)
     yield AgentEvent("answer", {"text": GIVE_UP_TEXT})

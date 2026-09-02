@@ -166,3 +166,26 @@ def test_stripe_detail_from_a_failed_action_is_logged_and_kept_from_the_model(
     assert observation == {"error": "Stripe couldn't complete that.", "hint": "Try again."}
     assert "Connection reset" in caplog.text
     assert "Connection reset" not in llm.calls[1][1][-1].content
+
+
+def test_display_data_reaches_the_interface_but_never_the_model() -> None:
+    """A result's `display` object feeds charts; the model reads the observation without it.
+
+    Per-day totals in the transcript tempted the planner to sum periods itself,
+    which is the one thing the loop exists to prevent.
+    """
+
+    def _with_display(_ctx: dict[str, Any], params: EchoParams) -> dict[str, Any]:
+        """Read action whose result carries interface-only data."""
+        return {"echo": params.text, "display": {"daily_totals": [1, 2, 3]}}
+
+    registry = Registry([ActionSpec("echo", "Echo text", EchoParams, _with_display)])
+    llm = ScriptedLLM([_call("echo", text="hi"), _call("answer", text="Done")])
+    events = list(run_turn(
+        llm=llm, registry=registry, ctx={}, system="s", history=[], prompt="p",
+        hooks=_hooks([], []),
+    ))
+    assert events[2].data["result"] == {"echo": "hi", "display": {"daily_totals": [1, 2, 3]}}
+    fed_back = llm.calls[1][1][-1].content
+    assert "echo" in fed_back
+    assert "display" not in fed_back and "daily_totals" not in fed_back

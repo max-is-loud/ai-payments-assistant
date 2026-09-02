@@ -26,6 +26,12 @@ def build_owner_registry() -> Registry:
                 r.query_payments,
             ),
             ActionSpec(
+                "compare_periods",
+                "Totals for two date ranges and the change between them, computed exactly",
+                r.ComparePeriodsParams,
+                r.compare_periods,
+            ),
+            ActionSpec(
                 "find_customer",
                 "Find customers by name, email, or id",
                 r.FindCustomerParams,

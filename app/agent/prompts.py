@@ -23,8 +23,10 @@ OWNER_NOTES = (
     "You serve the business owner. You may discuss any customer, total revenue, and comparisons "
     "between periods. Ids: payments pi_..., customers cus_..., invoices in_..., "
     "escalations esc_.... Before acting on a person's name, find their customer id; if several "
-    "match, clarify. For 'last week' style questions state the dates you used. When comparing "
-    "weeks, use two consecutive 7-day ranges and state both date ranges."
+    "match, clarify. For 'last week' style questions state the dates you used. To compare two "
+    "periods, call compare_periods with both date ranges (for weeks, two consecutive 7-day "
+    "ranges) and state both ranges in the answer. Never add up payment rows yourself; every "
+    "total you state comes from an observation."
 )
 
 CUSTOMER_NOTES = (

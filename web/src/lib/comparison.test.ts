@@ -15,14 +15,14 @@ const lastWeek = observation("query_payments", {
   period: "2026-08-24 to 2026-08-26",
   succeeded_total_cents: 5284_00,
   succeeded_count: 41,
-  daily_totals: [day("2026-08-24", 910_00), day("2026-08-25", 1180_00), day("2026-08-26", 0)],
+  display: { daily_totals: [day("2026-08-24", 910_00), day("2026-08-25", 1180_00), day("2026-08-26", 0)] },
 });
 
 const weekBefore = observation("query_payments", {
   period: "2026-08-17 to 2026-08-19",
   succeeded_total_cents: 4610_00,
   succeeded_count: 38,
-  daily_totals: [day("2026-08-17", 780_00), day("2026-08-18", 640_00), day("2026-08-19", 1110_00)],
+  display: { daily_totals: [day("2026-08-17", 780_00), day("2026-08-18", 640_00), day("2026-08-19", 1110_00)] },
 });
 
 describe("findComparison", () => {
@@ -52,7 +52,30 @@ describe("findComparison", () => {
 
   it("ignores failed observations and other actions", () => {
     const failed = observation("query_payments", { error: "Stripe rejected the request." });
-    const other = observation("find_customer", { count: 1, daily_totals: [] });
+    const other = observation("find_customer", { count: 1, display: { daily_totals: [] } });
     expect(findComparison([failed, other, lastWeek])).toBeNull();
+  });
+
+  it("reads a single compare_periods observation, which already names the earlier and later period", () => {
+    const compared = observation("compare_periods", {
+      earlier: { start_date: "2026-08-17", end_date: "2026-08-19", succeeded_total_cents: 4610_00, succeeded_count: 38 },
+      later: { start_date: "2026-08-24", end_date: "2026-08-26", succeeded_total_cents: 5284_00, succeeded_count: 41 },
+      change_cents: 674_00,
+      change_percent: 14.6,
+      display: {
+        earlier_daily_totals: [day("2026-08-17", 780_00), day("2026-08-18", 640_00), day("2026-08-19", 1110_00)],
+        later_daily_totals: [day("2026-08-24", 910_00), day("2026-08-25", 1180_00), day("2026-08-26", 0)],
+      },
+    });
+    expect(findComparison([compared])).toEqual({
+      earlier: {
+        start: "2026-08-17", end: "2026-08-19", totalCents: 4610_00, count: 38,
+        daily: [780_00, 640_00, 1110_00],
+      },
+      later: {
+        start: "2026-08-24", end: "2026-08-26", totalCents: 5284_00, count: 41,
+        daily: [910_00, 1180_00, 0],
+      },
+    });
   });
 });
