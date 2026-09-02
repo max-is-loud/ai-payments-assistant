@@ -4,7 +4,7 @@ from app.api.app import Services, create_app
 from app.db.engine import make_engine
 from app.llm.factory import build_backend
 from app.settings import load_settings
-from app.stripe_.cached_gateway import CachedGateway
+from app.stripe_.cached_gateway import CachedGateway, warm_in_background
 from app.stripe_.owner_client import StripeOwnerGateway
 from app.telegram.notify import make_notifier
 
@@ -28,4 +28,7 @@ def build_services() -> Services:
     )
 
 
-app = create_app(build_services())
+services = build_services()
+# The first page after `make dev` should not pay for the cold listing itself.
+warm_in_background(services.gateway)
+app = create_app(services)

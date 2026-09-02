@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 
 from app.domain.models import Payment
-from app.stripe_.cached_gateway import CachedGateway
+from app.stripe_.cached_gateway import CachedGateway, warm_in_background
 from tests.fakes.stripe_fake import FakeStripeGateway
 
 NOW = datetime(2026, 9, 2, 12, 0, tzinfo=UTC)
@@ -139,3 +139,30 @@ def test_concurrent_misses_wait_for_one_fetch() -> None:
     for thread in threads:
         thread.join()
     assert _count(fake, "list_payments") == 1
+
+
+def test_warm_up_fetches_what_the_first_page_reads_off_the_request_path() -> None:
+    """After `make dev`, the first visitor finds payments and open invoices already listed."""
+    fake = _account()
+    cached = CachedGateway(fake, ttl_seconds=20, clock=time.monotonic)
+    warm_in_background(cached).join(timeout=5)
+    assert [name for name, _ in fake.calls] == ["list_payments", "list_invoices"]
+    cached.list_payments()
+    cached.list_invoices(status="open")
+    assert _count(fake, "list_payments") == 1
+    assert _count(fake, "list_invoices") == 1
+
+
+def test_warm_up_failure_is_logged_not_raised() -> None:
+    """Stripe being unreachable at startup must not take the API down with it."""
+
+    class Unreachable(FakeStripeGateway):
+        """A gateway whose listing fails the way a bad network would."""
+
+        def list_payments(self) -> list[Payment]:
+            """Fail."""
+            raise ConnectionError("no route to api.stripe.com")
+
+    thread = warm_in_background(CachedGateway(Unreachable(), ttl_seconds=20, clock=time.monotonic))
+    thread.join(timeout=5)
+    assert not thread.is_alive()

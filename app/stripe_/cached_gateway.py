@@ -13,6 +13,7 @@ made by the other process (the bot paying an invoice) are seen after the TTL
 rather than instantly; the demo script already promises "on its next refresh".
 """
 
+import logging
 import threading
 import time
 from collections.abc import Callable, Hashable
@@ -22,6 +23,8 @@ from typing import Any
 
 from app.domain.models import Customer, Invoice, Payment, Refund
 from app.stripe_.gateway import StripeGateway
+
+log = logging.getLogger(__name__)
 
 # Below the web app's poll interval (REFRESH_MS in web/src/state/useDashboard.ts).
 DEFAULT_TTL_SECONDS = 20.0
@@ -154,3 +157,31 @@ class CachedGateway:
         invoice = self._inner.pay_invoice(invoice_id, idempotency_key=idempotency_key)
         self._forget(PAYMENTS, INVOICES)
         return invoice
+
+
+def warm_in_background(gateway: StripeGateway) -> threading.Thread:
+    """Fetch the listings the first page reads, off the request path.
+
+    A cold cache makes the first visitor after `make dev` pay one full Stripe
+    listing. Fetching it in a daemon thread while the server finishes starting
+    means the page that arrives a few seconds later finds the cache warm. Any
+    failure is logged and swallowed: the first request then fetches for itself,
+    and Stripe being unreachable at startup never takes the API down.
+
+    Returns:
+        The started thread, so a caller (or a test) can wait for it.
+    """
+
+    def run() -> None:
+        """Populate the two listings the dashboard reads on load."""
+        try:
+            gateway.list_payments()
+            gateway.list_invoices(status="open")
+        except Exception:  # noqa: BLE001 — startup must not depend on Stripe answering
+            log.warning(
+                "Stripe cache warm-up failed; the first request will fetch directly", exc_info=True
+            )
+
+    thread = threading.Thread(target=run, name="stripe-cache-warm-up", daemon=True)
+    thread.start()
+    return thread
