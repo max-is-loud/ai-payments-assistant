@@ -9,6 +9,7 @@ import type { DailyFacts, Escalation, SummaryResponse } from "./api/types";
 import { SummaryCard } from "./components/SummaryCard";
 import { TodayRail } from "./components/TodayRail";
 import { EscalationsPanel } from "./components/EscalationsPanel";
+import { Markdown } from "./components/Markdown";
 
 export default function App() {
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
@@ -65,7 +66,7 @@ export default function App() {
                       onApprove={() => approve(t.confirmation!.action_id)} onCancel={() => cancel(t.confirmation!.action_id)} />
                   )}
                   {t.result && <ResultCard result={t.result} />}
-                  {t.text && <div className="bubble">{t.text}</div>}
+                  {t.text && <div className="bubble"><Markdown>{t.text}</Markdown></div>}
                   {t.error && <div className="error">{t.error}</div>}
                 </div>
               ),

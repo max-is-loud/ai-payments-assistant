@@ -12,6 +12,7 @@ dev:
 
 test:
 	uv run pytest
+	cd web && npm test
 
 lint:
 	uv run ruff check .

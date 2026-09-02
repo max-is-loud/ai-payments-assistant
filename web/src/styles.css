@@ -39,7 +39,22 @@ a { color: var(--accent-ink); }
 .thread { display: flex; flex-direction: column; gap: 14px; }
 .turn.user { align-self: flex-end; max-width: 78%; background: var(--accent-soft); color: var(--accent-ink); padding: 10px 14px; border-radius: 14px 14px 4px 14px; }
 .turn.assistant { display: flex; flex-direction: column; gap: 10px; }
-.bubble { background: var(--card); border: 1px solid var(--rule); border-radius: 14px 14px 14px 4px; padding: 12px 16px; max-width: 78%; }
+.bubble { background: var(--card); border: 1px solid var(--rule); border-radius: 14px 14px 14px 4px; padding: 12px 16px; max-width: 78%; overflow-x: auto; }
+
+/* Model text rendered as Markdown: tight paragraphs, real lists, scannable tables. */
+.prose > :first-child { margin-top: 0; } .prose > :last-child { margin-bottom: 0; }
+.prose p { margin: 0 0 8px; }
+.prose ul, .prose ol { margin: 4px 0 8px; padding-left: 20px; } .prose li { margin: 2px 0; } .prose li::marker { color: var(--ink-3); }
+.prose strong { font-weight: 600; } .prose a { color: var(--accent-ink); }
+.prose code { font-family: var(--font-mono); font-size: 13px; background: var(--paper); padding: 1px 5px; border-radius: 4px; }
+.prose pre { margin: 4px 0 8px; padding: 8px 10px; background: var(--paper); border-radius: 6px; overflow-x: auto; font-size: 12px; } .prose pre code { padding: 0; background: none; }
+.prose h1, .prose h2, .prose h3 { font-family: var(--font-display); font-size: 15px; letter-spacing: -0.01em; margin: 8px 0 4px; }
+.prose blockquote { margin: 4px 0 8px; padding-left: 10px; border-left: 2px solid var(--rule); color: var(--ink-2); }
+.prose table { border-collapse: collapse; margin: 6px 0 8px; font-size: 14px; font-variant-numeric: tabular-nums; }
+.prose th, .prose td { text-align: left; vertical-align: top; padding: 5px 14px 5px 0; border-bottom: 1px solid var(--rule); }
+.prose th { font-family: var(--font-mono); font-weight: 500; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.prose tr:last-child td { border-bottom: 0; }
+.lede .prose { font-size: 17px; }
 
 .trail { border-left: 2px solid var(--rule); margin-left: 6px; padding-left: 0; list-style: none; margin-top: 0; margin-bottom: 0; }
 .trail li { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; padding: 3px 0 3px 12px; animation: rise 160ms ease-out both; }
