@@ -54,6 +54,13 @@ It is written against the requirements in
 [Assignment brief](assignment-brief.md). The implementation plan for it is
 [AI payments assistant — implementation plan](plans/2026-09-01-ai-payments-assistant-plan.md).
 
+The owner web app's visual design was produced in Claude Design and handed
+over as [Ledger design handoff](generated/ledger-design-handoff.md). The
+design system itself (tokens, classes, reference components, UI kit) is
+installed as a Claude Code skill at `.claude/skills/ledger-design/`, and the
+current-versus-redesign review canvases are kept under
+`assets/design-mockups/` (open the `.dc.html` files in a browser).
+
 ## Tooling
 
 See [Tooling](tooling.md) for how Serena and Graphify are configured here

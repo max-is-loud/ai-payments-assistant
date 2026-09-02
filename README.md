@@ -90,16 +90,50 @@ real resources any client can inspect on its own.
 | `GET` | `/api/conversations/{id}` | Transcript, plus any still-pending proposal |
 | `GET` | `/api/summary/today` | Daily summary, narrated by the LLM |
 | `GET` | `/api/summary/today?narrate=false` | The same facts with no LLM call, for the live rail |
+| `GET` | `/api/summary/series` | Per-day, per-hour, and per-customer totals for the charts; no LLM |
 | `GET` | `/api/escalations` | Payments waiting on the owner |
 | `POST` | `/api/escalations/{id}/approve` | Approve one; notifies the customer |
 | `DELETE` | `/api/customers/{id}/telegram-binding` | Owner-side revoke of a customer's bot binding |
 | `GET` | `/api/audit` | Every action taken, and the prompt that produced it |
 
-`POST /api/conversations/{id}/cancel` and the `narrate=false` variant of the
-summary route are additions beyond the design spec's original eight: cancel
-lets a reviewer dismiss a proposal instead of leaving it pending, and
-`narrate=false` gives the web app's live activity rail exact figures on a
-30-second poll without spending an LLM call on every refresh.
+`POST /api/conversations/{id}/cancel`, the `narrate=false` variant of the
+summary route, and `/api/summary/series` are additions beyond the design
+spec's original eight: cancel lets a reviewer dismiss a proposal instead of
+leaving it pending, `narrate=false` gives the web app's live figures on a
+30-second poll without spending an LLM call on every refresh, and `series`
+feeds the charts with per-day, per-hour, and per-customer totals computed in
+Python. A ranged `query_payments` observation also carries zero-filled
+`daily_totals` under a `display` key, which is how the two-period comparison
+chart inside an answer is drawn from the turn's own events rather than a
+second request. `display` is for the interface only: the agent loop strips it
+from what the model reads, so the planner is never handed a raw series to sum.
+
+## The owner web app
+
+The web app follows a design system produced in Claude Design and handed
+over as [`documentation/generated/ledger-design-handoff.md`](documentation/generated/ledger-design-handoff.md);
+the system itself is installed as a Claude Code skill at
+`.claude/skills/ledger-design/`, and the before/after review canvases are
+under `documentation/assets/design-mockups/`. Warm paper, near-black ink,
+green for money in, coral for money out, amber for anything waiting on the
+owner; a serif only where a person speaks to a person; mono for every number.
+
+The page speaks first. A masthead band carries the sync status; the hero
+renders the narrated summary, with a one-line aside from the model lifted
+into the serif greeting, beside today's figure and its pills; a three-week
+area trend follows with its total, weekday average, and best day. The thread
+shows the agent trail, amber confirmation cards that lead with the figure and
+the name, three-column receipts, and an error strip with Retry. The rail
+holds today by hour, top customers, unpaid invoices, and one amber card per
+pending escalation. A dark theme is one click away in the band.
+
+Every chart is drawn from numbers the server computed — the model never
+produces a figure a chart shows. When an answer compares two date ranges, the
+bubble opens with both periods as bars on one scale, taken from the
+`compare_periods` (or two ranged `query_payments`) observations already in
+the turn. `compare_periods` is the owner registry's tenth action, added after
+the first live walkthrough showed the planner summing payment rows by hand
+for exactly this question; it returns both totals and the change as facts.
 
 ## Setup
 
@@ -171,11 +205,11 @@ With the sandbox seeded and `make dev` running, this is roughly the
 reviewer's first fifteen minutes:
 
 1. Open `http://127.0.0.1:5173` and read the narrated summary the app
-   opens with; the live rail's figures should match what `make seed`
-   reported.
+   opens with; the hero figure, the three-week trend, and the rail's hourly
+   and top-customer charts should match what `make seed` reported.
 2. Ask the web assistant: *"How much did we take last week compared to the
    week before?"* — the answer states the actual date ranges it compared,
-   not just the totals.
+   not just the totals, and opens with both weeks drawn as bars on one scale.
 3. Ask: *"Refund Maya's last payment."* Watch the trail show
    `find_customer` then `query_payments`, then a confirmation card naming
    Maya and the exact amount. Click **Approve** and a receipt card appears;
@@ -214,6 +248,19 @@ for both. The load-bearing claims each have a test behind them:
 - Neither channel's system message contains the other's formatting rules.
 - The web app renders lists, tables, and emphasis from model text and never
   renders raw HTML or a `javascript:` link.
+- The chart series bucket by the owner's local day and hour, zero-fill quiet
+  days, exclude declines, and return every hour of today, because seeded
+  payments land at whatever hour the seed ran.
+- `compare_periods` orders the two ranges by date, computes both totals and
+  the change in Python, and reports no percentage against an empty baseline;
+  a reversed range is rejected at validation.
+- The agent loop feeds the model an observation without its `display` data,
+  while the event the interface receives keeps it.
+- The comparison chart appears for one `compare_periods` observation or two
+  ranged `query_payments` observations, with the earlier period as the
+  baseline whatever order the planner ran them in; the confirmation card
+  leads with the figure when details are present and falls back to the
+  sentence when not.
 
 `uv run pytest -m live_llm` runs the one test that calls a real model; it is
 deselected by default (`addopts = -m 'not live_llm'` in `pyproject.toml`) and

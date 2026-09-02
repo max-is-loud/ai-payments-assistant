@@ -57,6 +57,12 @@ brief, the code conventions and their reasoning, and the tooling notes.
   committed; `cache/` and `project.local.yml` are not.
 - **Graphify** builds the knowledge graph. Nothing under `graphify-out/` is
   committed — all of it is regenerable and large.
+- **The web app's design system** lives in `.claude/skills/ledger-design/`
+  (invoke with `/ledger-design`). It is the source of truth for tokens and the
+  `.ldg-*` classes; `web/src/styles/` mirrors it. The handoff spec it
+  implements is `documentation/generated/ledger-design-handoff.md`. Charts are
+  drawn from `GET /api/summary/series` and from `daily_totals` on ranged
+  `query_payments` observations — never from model text.
 
 ## Commands
 

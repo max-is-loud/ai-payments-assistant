@@ -133,6 +133,44 @@
   instead of a JSON block, and a crash mid-stream is a final error frame
   rather than silence.
 
+- **Charts without the model in the loop.** The redesign added four
+  visualizations — a three-week trend, today by hour, top customers, and a
+  two-period comparison inside an answer — and the tempting shortcut was to
+  have the model emit chart data alongside its prose. That would have put
+  numbers the owner reads in the one place the design forbids them: the
+  model's output. Instead the charts read a new no-LLM route,
+  `GET /api/summary/series`, computed the same way as the daily facts, and
+  the comparison chart is derived from the two ranged `query_payments`
+  observations already streamed in the turn, which now carry zero-filled
+  `daily_totals`. The first live run showed why that data has to stay out of
+  the model's reach: with per-day totals in the observation, the planner ran
+  a single two-week query, split it in half itself, and reported the cents as
+  dollars — the exact arithmetic the loop exists to prevent. Interface-only
+  data now travels under a `display` key that the loop strips from what the
+  model reads, so the trail and the web app get the whole result and the
+  planner sees the observation it always saw. The audit log showed the same
+  planner had been inconsistent on this question all along — sometimes two
+  7-day queries, sometimes one 14-day query and ninety-one rows summed by
+  hand — so it also gained `compare_periods`, an action that returns both
+  totals and the change as facts; the chart reads that single observation.
+  Two more things surfaced doing it. Today's seeded payments carry
+  Stripe's real timestamp — whatever hour the reviewer ran the seed — so an
+  "8am to 6pm" chart could silently lose all of them; the series returns all
+  24 hours and the axis widens to include any activity outside business
+  hours. And the design's confirmation card leads with a figure and a name
+  that existed only inside the summary sentence; parsing prose in the
+  browser was the wrong place to get them, so proposals now carry structured
+  details alongside the sentence, and the card falls back to the sentence
+  when a restored proposal has none.
+- **A design handoff as a spec.** The visual redesign was produced in Claude
+  Design as a handoff bundle — tokens, component classes, reference React
+  components, and a full-page kit — and treated as the spec: the bundle is
+  installed as a Claude Code skill so the values travel with the repository,
+  and `web/src/styles/` mirrors it rather than forking it. The kit did not
+  account for two production realities, Markdown inside the assistant's
+  bubbles and a loading state before facts arrive, which are the only
+  additions the production stylesheet makes.
+
 ## Limitations / with more time
 
 - **Native tool calling was deliberately not used.** The propose-execute
@@ -151,14 +189,16 @@
   boundary described above.
 - **No session auth, multi-owner support, or rate limiting.** This is a
   single-owner proof of concept behind one bearer token.
-- **Frontend tests cover two boundaries.** The web suite pins the Markdown
-  renderer — lists and tables render, raw HTML and `javascript:` links do
-  not — and error presentation: the trail's error and failed-action lines,
-  developer detail appearing only when the server sends it, and the
-  client's wording for a transport failure. Nothing else. The backend
-  carries the claims worth proving (the ceiling, scoping, confirmation
-  integrity, the `occurred_at` concession, executor validation); the rest
-  of the frontend was judged lower-value to cover given the time budget.
+- **Frontend tests cover logic, not layout.** The web suite pins the Markdown
+  renderer, error presentation, the pure functions behind the charts (local
+  day and hour labels, trend stats, comparison detection, the summary aside
+  split), and the components that carry behaviour: the confirmation card's
+  figure-or-sentence fallback, the receipt grid per action, the error strip,
+  the comparison chart's shared scale, and the thread's chart wiring and
+  retry. Layout and colour are checked by eye against the UI kit, not by
+  snapshot, and the backend still carries the claims worth proving (the
+  ceiling, scoping, confirmation integrity, the `occurred_at` concession,
+  executor validation).
 - **Stripe pagination beyond demo scale.** Listing and filtering happen in
   Python over `auto_paging_iter()`, fine at ~150 objects, not at production
   volume — that would need server-side filtering or a cache.
@@ -181,3 +221,16 @@ a device that might be the compromised one, the ceiling routes the decision
 out-of-band to the owner, who approves from a separate, already-authenticated
 channel. That is a stronger security property than an in-band second factor
 would have been, not a weaker one.
+
+## Bonus: a designed owner app
+
+The brief's owner interface could have stayed a chat box. The redesign gives
+it the shape a bookkeeper would recognise: the app speaks first with a
+narrated summary and the day's figure, three weeks of takings sit above the
+conversation, and the rail answers the questions an owner asks before they
+type — when today got busy, who pays the most, what is still unpaid, what
+needs a decision. Comparisons the assistant makes are drawn as well as said.
+None of it changes what the assistant can do; it changes how quickly the
+owner can read what it did. The design itself was produced in Claude Design
+and is checked in as a skill, so the visual language is as reproducible as
+the seed data.

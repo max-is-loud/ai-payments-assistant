@@ -123,7 +123,7 @@ Scoping is structural, not prompted:
 
 | Owner (web) | Customer (bot) |
 | --- | --- |
-| `summarize_day`, `query_payments` | `my_balance`, `my_invoices` |
+| `summarize_day`, `query_payments`, `compare_periods` | `my_balance`, `my_invoices` |
 | `find_customer`, `list_invoices` | `pay_invoice` |
 | `create_invoice`, `refund_charge` | `escalate_to_owner` |
 | `create_payment_link` | |
@@ -301,14 +301,43 @@ event: confirmation {"action_id": "act_7f3", "summary": "Refund $45.00 ..."}
 
 ## 7. Web app
 
-Vite, React, TypeScript. Beyond the required input and response area:
+Vite, React, TypeScript, styled by the Ledger design system — redesign option
+1b "Bold", chosen in review. The design was produced in Claude Design and
+handed over as [Ledger design handoff](../generated/ledger-design-handoff.md);
+the system itself (tokens, `.ldg-*` classes, reference components, a UI kit)
+is installed as the `ledger-design` skill and mirrored by `web/src/styles/`.
+Warm paper and near-black ink; one green for money in, coral for money out,
+amber for anything waiting on the owner; a serif only where a person speaks
+to a person; mono for every number. No shadows — hierarchy is hairlines and a
+paper→card step. The dark theme swaps the same tokens.
 
-- Daily summary rendered on load, so the app speaks first
-- Live activity trail driven by the SSE events above
-- Inline confirmation cards with resolved details and Approve or Cancel
-- Typed result cards — a refund renders a receipt, invoices render with status
-  pills
-- Escalations panel for the bonus loop
+Beyond the required input and response area, top to bottom:
+
+- **Masthead band**: wordmark, Stripe test-mode status with the sync age,
+  the date, and the theme toggle
+- **Hero**: the daily summary, narrated by the model from Python facts, with
+  a one-line aside lifted into the serif greeting when the first line is
+  short enough to be one; beside it the day's figure and pills (change versus
+  yesterday, payment count, declines) computed from the facts, never the prose
+- **Trend**: three weeks of daily takings as an area chart, with the total,
+  the weekday average, and the best day
+- **Thread**: the live agent trail driven by the SSE events above;
+  confirmation cards that lead with the figure and the counterparty, with
+  Approve or Cancel; receipts as one three-column grid (figure, description,
+  status pill) for every executed action; an error strip that shows one
+  sentence and offers Retry. When a turn holds two ranged `query_payments`
+  observations, the answer bubble opens with a two-period comparison chart
+- **Rail**: today by hour, top customers over three weeks, unpaid invoices,
+  and one amber card per pending escalation for the bonus loop
+
+Every chart draws from numbers the server computed: `GET /api/summary/series`
+(per-day, per-hour, and per-customer totals, no LLM) and the zero-filled
+`daily_totals` a ranged `query_payments` observation carries under its
+`display` key. `display` is the part of a result meant for the interface: the
+loop strips it from the observation it feeds back to the model, so the
+planner never holds a raw series to do its own arithmetic on. The model never
+produces a figure a chart shows, which keeps the "facts in Python, narration
+on request" rule intact on the visual side as well.
 
 Model text is rendered as GitHub-flavored Markdown, and the web system message
 says so, so a list of payments arrives as a list. Telegram cannot render
