@@ -75,7 +75,9 @@ real resources any client can inspect on its own.
   so a double-clicked approval cannot refund or charge twice.
 - **Errors carry a fix.** Every error is `{error: {code, message, hint}}` —
   "set `STRIPE_SECRET_KEY` in `.env`", not "unauthorized" — and SSE error
-  frames carry the same three fields.
+  frames carry the same three fields. A fourth, `detail`, holds developer
+  text such as a provider's raw response body; it is sent only when the API
+  runs with `DEBUG=1` and is written to the API log either way.
 - **Auth** is a single `OWNER_API_TOKEN` bearer token required on every
   `/api/*` route, shipped with a working local default in `.env.example` so
   it costs the reviewer nothing to run.
@@ -120,6 +122,10 @@ lets a reviewer dismiss a proposal instead of leaving it pending, and
      the `.env.example` default (`dev-owner-token`) works out of the box for
      local use.
    - `DATABASE_URL` — defaults to a local SQLite file; leave it as-is.
+   - `DEBUG` — off by default, so every error the web app shows is a
+     sentence and a next step. `DEBUG=1` (in `.env`, or `DEBUG=1 make dev`)
+     adds the raw provider response or exception name underneath; the API
+     log carries that detail either way.
 
 3. **Install.** `make install` — `uv sync` for the backend, `npm install`
    for the web app.

@@ -108,6 +108,30 @@
   existing test looked fine while a real browser would have received zero
   events — a reminder that streaming contracts need a raw-byte test, not
   just a line-normalized one.
+- **Errors that read as stack dumps.** With everything working, a
+  walkthrough of the owner web app hit a model call that failed, and what
+  the owner saw was `Error code: 400 - {'type': 'error', ...}`: both LLM
+  backends had put the SDK's message straight into the envelope's `hint`,
+  the one field reserved for "what to do next". The same pass found the
+  planner's self-corrections rendered as "Malformed JSON in the model
+  reply", a Stripe failure inside a turn shown as a `{"error": ..., "hint":
+  ...}` block, and an unanticipated exception either answering a bare
+  "Internal Server Error" or, once the SSE stream had opened, ending the
+  turn as an empty bubble. The `{code, message, hint}` envelope had been
+  designed precisely so that errors carry a fix; the failure was developer
+  text leaking into fields written for the owner. The first instinct, a
+  filter in the frontend, does not work: the browser cannot tell a
+  hand-written hint from an SDK dump, and that raw text is exactly what a
+  reviewer wants when something goes wrong on their machine. So the split
+  lives on the server. Errors gained a fourth field, `detail`, for
+  developer text; the HTTP envelope and SSE error frames carry it only when
+  the API runs with `DEBUG=1`, and it always goes to the API log, so the
+  default hides nothing from whoever runs the process. One build serves
+  both readers, the web app needs no flag of its own, and the trail keeps
+  every step visible: a planner retry is one sentence with the parse error
+  behind the flag, a failed action is a sentence under the ERR stamp
+  instead of a JSON block, and a crash mid-stream is a final error frame
+  rather than silence.
 
 ## Limitations / with more time
 
@@ -127,12 +151,14 @@
   boundary described above.
 - **No session auth, multi-owner support, or rate limiting.** This is a
   single-owner proof of concept behind one bearer token.
-- **Frontend tests cover one boundary.** The web suite pins the Markdown
+- **Frontend tests cover two boundaries.** The web suite pins the Markdown
   renderer — lists and tables render, raw HTML and `javascript:` links do
-  not — and nothing else. The backend carries the claims worth proving (the
-  ceiling, scoping, confirmation integrity, the `occurred_at` concession,
-  executor validation); the rest of the frontend was judged lower-value to
-  cover given the time budget.
+  not — and error presentation: the trail's error and failed-action lines,
+  developer detail appearing only when the server sends it, and the
+  client's wording for a transport failure. Nothing else. The backend
+  carries the claims worth proving (the ceiling, scoping, confirmation
+  integrity, the `occurred_at` concession, executor validation); the rest
+  of the frontend was judged lower-value to cover given the time budget.
 - **Stripe pagination beyond demo scale.** Listing and filtering happen in
   Python over `auto_paging_iter()`, fine at ~150 objects, not at production
   volume — that would need server-side filtering or a cache.

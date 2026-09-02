@@ -1,7 +1,7 @@
 ---
 title: AI payments assistant — design
 status: approved
-updated: 2026-09-01
+updated: 2026-09-02
 ---
 
 # AI payments assistant — design
@@ -291,7 +291,11 @@ event: confirmation {"action_id": "act_7f3", "summary": "Refund $45.00 ..."}
 - **`Idempotency-Key` passthrough** on mutating routes, forwarded to Stripe. A
   double-clicked approval must not refund twice.
 - **Errors carry a fix.** `{error: {code, message, hint}}` — "set
-  `STRIPE_SECRET_KEY` in `.env`" rather than "unauthorized".
+  `STRIPE_SECRET_KEY` in `.env`" rather than "unauthorized". A fourth field,
+  `detail`, carries developer text (a provider's raw response body, an
+  exception name) and is sent only when the API runs with `DEBUG=1`; it is
+  always written to the API log, so the default hides nothing from whoever
+  runs the process.
 - **Auth** is a single `OWNER_API_TOKEN` required on `/api/*`, shipped with a
   working default in `.env.example`. Enforced, with zero reviewer friction.
 
