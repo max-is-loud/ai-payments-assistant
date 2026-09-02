@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+html, body { margin: 0; background: #f6f7f9; color: #141821; font: 15px/1.5 "Instrument Sans", "Helvetica Neue", Arial, sans-serif; }
+* { box-sizing: border-box; }
+a { color: #1f2fa6; } a:hover { color: #2b3fd6; }
+button, input { font: inherit; }
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+</style>
+</helmet>
+<div data-screen-label="Ledger — current build" style="max-width:1180px;margin:0 auto;padding:24px 20px 120px">
+  <header style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:20px">
+    <h1 style="font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:700;font-size:28px;letter-spacing:-0.02em;margin:0">Ledger <small style="font-family:'Instrument Sans',sans-serif;font-weight:500;color:#8a8f98;font-size:14px;margin-left:10px;letter-spacing:0">payments assistant</small></h1>
+    <span style="color:#8a8f98;font-family:'JetBrains Mono',monospace;font-size:13px">Wednesday, September 2</span>
+  </header>
+  <main style="display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;align-items:start">
+    <section>
+      <div style="background:#fff;border:1px solid #e1e4ea;border-radius:10px;box-shadow:0 1px 2px rgba(20,24,33,0.06),0 8px 24px -16px rgba(20,24,33,0.25);padding:18px 20px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8a8f98">Today, in a sentence</div>
+        <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;letter-spacing:-0.01em;margin:0 0 10px">Good morning.</h2>
+        <div style="font-size:17px"><p style="margin:0">You took <strong style="font-weight:600">$2,412.00</strong> across 18 payments today, already well ahead of yesterday's $1,336.00. Two cards were declined for insufficient funds, and Acme Corp still has an open <strong style="font-weight:600">$1,200.00</strong> retainer invoice due September 12 — plus a $2,400.00 licence renewal due the 23rd.</p></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px;margin-top:14px">
+        <div style="align-self:flex-end;max-width:78%;background:#e7eafb;color:#1f2fa6;padding:10px 14px;border-radius:14px 14px 4px 14px">How much did we take last week compared to the week before?</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <ul style="border-left:2px solid #e1e4ea;margin:0 0 0 6px;padding:0;list-style:none">
+            <li style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:3px 0 3px 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#8a8f98;padding-top:3px">PLAN</span><div style="color:#4b5160;font-size:14px;min-width:0">Compare two full weeks: Aug 24–30 against Aug 17–23. Query each window and report both totals with their date ranges.</div></li>
+            <li style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:3px 0 3px 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#1f2fa6;padding-top:3px">ACT</span><div style="color:#4b5160;font-size:14px;min-width:0"><span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums">query_payments</span> {"start_date":"2026-08-24","end_date":"2026-08-30","limit":1}</div></li>
+            <li style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:3px 0 3px 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#8a8f98;padding-top:3px">OBS</span><div style="color:#4b5160;font-size:14px;min-width:0"><details><summary style="cursor:pointer;color:#8a8f98">query_payments returned</summary><pre style="margin:6px 0 0;font-size:12px;overflow-x:auto;background:#f6f7f9;padding:8px;border-radius:6px;font-family:'JetBrains Mono',monospace">{
+  "period": "2026-08-24 to 2026-08-30",
+  "succeeded_count": 41,
+  "succeeded_total_cents": 528400,
+  "refunded_total_cents": 0,
+  "declined_count": 0,
+  "matched_count": 41,
+  "listed_count": 1
+}</pre></details></div></li>
+            <li style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:3px 0 3px 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#1f2fa6;padding-top:3px">ACT</span><div style="color:#4b5160;font-size:14px;min-width:0"><span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums">query_payments</span> {"start_date":"2026-08-17","end_date":"2026-08-23","limit":1}</div></li>
+            <li style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:3px 0 3px 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#8a8f98;padding-top:3px">OBS</span><div style="color:#4b5160;font-size:14px;min-width:0"><details><summary style="cursor:pointer;color:#8a8f98">query_payments returned</summary></details></div></li>
+          </ul>
+          <div style="background:#fff;border:1px solid #e1e4ea;border-radius:14px 14px 14px 4px;padding:12px 16px;max-width:78%;overflow-x:auto">
+            <p style="margin:0 0 8px">Last week was up about <strong style="font-weight:600">15%</strong> on the week before:</p>
+            <table style="border-collapse:collapse;margin:6px 0 8px;font-size:14px;font-variant-numeric:tabular-nums">
+              <thead><tr>
+                <th style="text-align:left;vertical-align:top;padding:5px 14px 5px 0;border-bottom:1px solid #e1e4ea;font-family:'JetBrains Mono',monospace;font-weight:500;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#8a8f98">Week</th>
+                <th style="text-align:left;vertical-align:top;padding:5px 14px 5px 0;border-bottom:1px solid #e1e4ea;font-family:'JetBrains Mono',monospace;font-weight:500;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#8a8f98">Payments</th>
+                <th style="text-align:left;vertical-align:top;padding:5px 14px 5px 0;border-bottom:1px solid #e1e4ea;font-family:'JetBrains Mono',monospace;font-weight:500;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#8a8f98">Taken</th>
+              </tr></thead>
+              <tbody>
+                <tr><td style="text-align:left;vertical-align:top;padding:5px 14px 5px 0;border-bottom:1px solid #e1e4ea">Aug 24 – Aug 30</td><td style="text-align:left;vertical-align:top;padding:5px 14px 5px 0;border-bottom:1px solid #e1e4ea">41</td><td style="text-align:left;vertical-align:top;padding:5px 14px 5px 0;border-bottom:1px solid #e1e4ea">$5,284.00</td></tr>
+                <tr><td style="text-align:left;vertical-align:top;padding:5px 14px 5px 0">Aug 17 – Aug 23</td><td style="text-align:left;vertical-align:top;padding:5px 14px 5px 0">38</td><td style="text-align:left;vertical-align:top;padding:5px 14px 5px 0">$4,610.00</td></tr>
+              </tbody>
+            </table>
+            <p style="margin:0">That's <strong style="font-weight:600">$674.00</strong> more across three additional payments, with no declines or refunds in either week.</p>
+          </div>
+        </div>
+        <div style="align-self:flex-end;max-width:78%;background:#e7eafb;color:#1f2fa6;padding:10px 14px;border-radius:14px 14px 4px 14px">Refund Maya's last payment.</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <ul style="border-left:2px solid #e1e4ea;margin:0 0 0 6px;padding:0;list-style:none">
+            <li style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:3px 0 3px 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#8a8f98;padding-top:3px">PLAN</span><div style="color:#4b5160;font-size:14px;min-width:0">Find Maya's customer id, then her most recent successful payment, then propose the refund.</div></li>
+            <li style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:3px 0 3px 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#1f2fa6;padding-top:3px">ACT</span><div style="color:#4b5160;font-size:14px;min-width:0"><span style="font-family:'JetBrains Mono',monospace">find_customer</span> {"query":"Maya"}</div></li>
+            <li style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:3px 0 3px 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#8a8f98;padding-top:3px">OBS</span><div style="color:#4b5160;font-size:14px;min-width:0"><details><summary style="cursor:pointer;color:#8a8f98">find_customer returned</summary></details></div></li>
+            <li style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:3px 0 3px 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#1f2fa6;padding-top:3px">ACT</span><div style="color:#4b5160;font-size:14px;min-width:0"><span style="font-family:'JetBrains Mono',monospace">query_payments</span> {"customer_id":"cus_Qx8mR2kL9vT4pN","status":"succeeded","limit":1}</div></li>
+            <li style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:3px 0 3px 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#8a8f98;padding-top:3px">OBS</span><div style="color:#4b5160;font-size:14px;min-width:0"><details><summary style="cursor:pointer;color:#8a8f98">query_payments returned</summary></details></div></li>
+            <li style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:3px 0 3px 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#b9770e;padding-top:3px">ASK</span><div style="color:#4b5160;font-size:14px;min-width:0">Waiting for your approval</div></li>
+          </ul>
+          <div style="border:1px solid #b9770e;background:#f8eedc;border-radius:10px;padding:14px 16px">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8a8f98">Needs your approval</div>
+            <div>Refund $45.00 to Maya Chen for Consulting (pi_3Qk2LxHt7wA1, paid today at 09:14).</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8a8f98;margin-top:8px">Approved</div>
+          </div>
+          <div style="border-radius:10px;border:1px solid #e1e4ea;background:#fff;padding:14px 16px">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8a8f98">Refund issued</div>
+            <div style="font-size:28px;line-height:1.1;margin:6px 0;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-weight:500;color:#b7372e">−$45.00</div>
+            <dl style="display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;font-size:14px;margin:0">
+              <dt style="color:#8a8f98">To</dt><dd style="margin:0">Maya Chen</dd>
+              <dt style="color:#8a8f98">Refund</dt><dd style="margin:0;font-family:'JetBrains Mono',monospace">re_3Qk2LxHt7wA1p0Zf</dd>
+              <dt style="color:#8a8f98">Status</dt><dd style="margin:0"><span style="display:inline-block;padding:2px 8px;border-radius:999px;font-family:'JetBrains Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;background:#e4f3ea;color:#1e7d4f">succeeded</span></dd>
+            </dl>
+          </div>
+          <div style="background:#fff;border:1px solid #e1e4ea;border-radius:14px 14px 14px 4px;padding:12px 16px;max-width:78%"><p style="margin:0">Done — <strong style="font-weight:600">$45.00</strong> is on its way back to Maya Chen. Refunds usually land in 5–10 business days.</p></div>
+        </div>
+        <div style="align-self:flex-end;max-width:78%;background:#e7eafb;color:#1f2fa6;padding:10px 14px;border-radius:14px 14px 4px 14px">Create a $250 invoice for Acme Corp due next Friday</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <ul style="border-left:2px solid #e1e4ea;margin:0 0 0 6px;padding:0;list-style:none">
+            <li style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:3px 0 3px 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#8a8f98;padding-top:3px">PLAN</span><div style="color:#4b5160;font-size:14px;min-width:0">Resolve Acme Corp, then propose a $250.00 invoice due Friday 2026-09-11.</div></li>
+            <li style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:3px 0 3px 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#1f2fa6;padding-top:3px">ACT</span><div style="color:#4b5160;font-size:14px;min-width:0"><span style="font-family:'JetBrains Mono',monospace">find_customer</span> {"query":"Acme Corp"}</div></li>
+            <li style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:3px 0 3px 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#b7372e;padding-top:3px">ERR</span><div style="color:#4b5160;font-size:14px;min-width:0"><span style="font-family:'JetBrains Mono',monospace">find_customer</span> failed: Stripe rejected the request — check that STRIPE_SECRET_KEY in .env is a test-mode key</div></li>
+          </ul>
+          <div style="color:#b7372e;font-size:14px;white-space:pre-wrap">The assistant could not finish this turn. Retry, or check the API log for detail.</div>
+        </div>
+      </div>
+      <div style="height:16px"></div>
+      <form style="position:sticky;bottom:16px;display:flex;gap:8px;background:#fff;border:1px solid #e1e4ea;border-radius:14px;padding:8px;box-shadow:0 1px 2px rgba(20,24,33,0.06),0 8px 24px -16px rgba(20,24,33,0.25)">
+        <input aria-label="Command" placeholder="Refund Maya's last payment" style="flex:1;border:0;padding:10px 12px;background:transparent;outline:none;color:#141821">
+        <button type="button" style="border:1px solid #2b3fd6;background:#2b3fd6;color:#fff;border-radius:8px;padding:8px 14px;cursor:pointer;opacity:0.55">Send</button>
+      </form>
+    </section>
+    <aside style="display:flex;flex-direction:column;gap:16px">
+      <div style="background:#fff;border:1px solid #e1e4ea;border-radius:10px;box-shadow:0 1px 2px rgba(20,24,33,0.06),0 8px 24px -16px rgba(20,24,33,0.25);padding:18px 20px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8a8f98">Today · 2026-09-02</div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid #e1e4ea"><span style="color:#4b5160;font-size:14px">Taken</span><span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-weight:500;color:#1e7d4f">$2,412.00</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid #e1e4ea"><span style="color:#4b5160;font-size:14px">Payments</span><span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums">18</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid #e1e4ea"><span style="color:#4b5160;font-size:14px">Refunded</span><span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-weight:500;color:#b7372e">$45.00</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid #e1e4ea"><span style="color:#4b5160;font-size:14px">Declined</span><span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums" title="2 insufficient funds">2</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid #e1e4ea"><span style="color:#4b5160;font-size:14px">Yesterday</span><span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-weight:500">$1,336.00</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0"><span style="color:#4b5160;font-size:14px">Unpaid invoices</span><span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-weight:500">$3,780.00</span></div>
+      </div>
+      <div style="background:#fff;border:1px solid #e1e4ea;border-radius:10px;box-shadow:0 1px 2px rgba(20,24,33,0.06),0 8px 24px -16px rgba(20,24,33,0.25);padding:18px 20px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8a8f98">Escalations</div>
+        <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;letter-spacing:-0.01em;margin:0 0 10px">Waiting on you</h2>
+        <div style="padding:10px 0">
+          <div><strong style="font-weight:600">Acme Corp</strong> <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-weight:500">$2,400.00</span></div>
+          <div style="color:#8a8f98;font-size:13px">Payment at or above the bot's limit · 9/2/2026, 10:42:17 AM</div>
+          <button type="button" style="margin-top:8px;border:1px solid #2b3fd6;background:#2b3fd6;color:#fff;border-radius:8px;padding:8px 14px;cursor:pointer" style-hover="background:#1f2fa6">Approve and notify</button>
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+</x-dc>
+</body>
+</html>

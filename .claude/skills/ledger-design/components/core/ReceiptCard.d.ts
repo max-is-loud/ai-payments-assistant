@@ -1,0 +1,2 @@
+export interface ReceiptCardProps { title: string; amountCents: number; tone?: "" | "in" | "out"; description: React.ReactNode; status: string; statusTone?: "in" | "out" | "wait" | "neutral" }
+export function ReceiptCard(p: ReceiptCardProps): JSX.Element;

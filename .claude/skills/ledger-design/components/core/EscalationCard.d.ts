@@ -1,0 +1,2 @@
+export interface EscalationCardProps { customerName: string; amountCents: number; time: string; reason?: string; busy?: boolean; onApprove?: () => void }
+export function EscalationCard(p: EscalationCardProps): JSX.Element;

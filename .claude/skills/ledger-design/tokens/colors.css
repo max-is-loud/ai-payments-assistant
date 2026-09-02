@@ -1,0 +1,43 @@
+/* Ledger palette. Warm paper + near-black ink, one green for money-in, coral for money-out, amber for "waiting on you".
+   Dark theme: set data-theme="dark" on <html> or any ancestor. Every component reads only these variables. */
+:root {
+  /* surfaces */
+  --paper: #f3f0e8;        /* page */
+  --card: #fbf9f4;         /* raised surface: bubbles, cards, composer */
+  --band: #15130e;         /* masthead band */
+  --rule: #dcd6c7;         /* hairlines */
+  --bar: #cfc8b6;          /* muted chart bars (history, comparison baseline) */
+  /* text */
+  --ink: #15130e;
+  --ink-2: #524c40;        /* secondary copy, trail lines */
+  --ink-3: #8b8576;        /* eyebrows, meta, axis labels */
+  --band-ink: #f3f0e8;
+  --band-ink-3: #9d978a;
+  /* semantic */
+  --accent: #0a6b4f;       /* links, ACT stamp */
+  --accent-ink: #0a6b4f;
+  --accent-soft: #e1efe7;
+  --in: #0a6b4f;           /* money in, success */
+  --in-soft: #d9ebe1;
+  --out: #c1432c;          /* money out, refunds, errors */
+  --out-soft: #f4e0da;
+  --wait: #a8690a;         /* needs approval, escalations */
+  --wait-soft: #f3e7cf;
+  /* user bubble */
+  --user: #15130e;
+  --user-ink: #f3f0e8;
+  /* semantic aliases */
+  --text-body: var(--ink);
+  --text-muted: var(--ink-2);
+  --text-meta: var(--ink-3);
+  --surface-page: var(--paper);
+  --surface-card: var(--card);
+  --border-hairline: 1px solid var(--rule);
+}
+[data-theme="dark"] {
+  --paper: #0e0e0c; --card: #171613; --band: #171613; --rule: #2b2922; --bar: #2e2c25;
+  --ink: #f1ede3; --ink-2: #c7c1b3; --ink-3: #857f70; --band-ink: #f1ede3; --band-ink-3: #857f70;
+  --accent: #4fd39a; --accent-ink: #7be3b4; --accent-soft: #12291f;
+  --in: #4fd39a; --in-soft: #153024; --out: #ff8a70; --out-soft: #3a1f19; --wait: #e6a94a; --wait-soft: #332711;
+  --user: #f1ede3; --user-ink: #0e0e0c;
+}

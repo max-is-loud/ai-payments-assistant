@@ -1,0 +1,92 @@
+<!-- @dsCard group="Ledger app" viewport="1280x900" name="Owner app — home" subtitle="Hero, trend, conversation with all six states, rail" -->
+<!-- @startingPoint section="Ledger" subtitle="Owner web app, full page" viewport="1280x900" -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ledger — payments assistant</title><link rel="stylesheet" href="../../styles.css"></head>
+<body>
+<header class="ldg-band">
+  <div style="display:flex;align-items:baseline"><span class="wordmark">Ledger</span><span class="tag">payments assistant</span></div>
+  <div class="meta"><span><i class="ldg-dot"></i>Stripe test mode · synced 12s ago</span><span>Wednesday, September 2</span><button id="theme" class="ldg-btn secondary" style="padding:4px 12px;font-size:12px;color:var(--band-ink);border-color:var(--band-ink-3)">Dark</button></div>
+</header>
+<div class="ldg-page">
+  <section class="ldg-hero">
+    <div>
+      <div class="ldg-eyebrow" style="margin-bottom:8px">Today, in a sentence</div>
+      <h1 class="ldg-hero-title" style="margin-bottom:14px">Good morning. <em>A strong Wednesday.</em></h1>
+      <p class="ldg-lede">You took <strong>$2,412.00</strong> across 18 payments today, already well ahead of yesterday's $1,336.00. Two cards were declined for insufficient funds, and Acme Corp still has an open <strong>$1,200.00</strong> retainer invoice due September 12 — plus a $2,400.00 licence renewal due the 23rd.</p>
+    </div>
+    <div class="right" style="text-align:right">
+      <div class="ldg-eyebrow">Taken today</div>
+      <div class="ldg-figure xl in" style="margin:6px 0 10px">$2,412<span class="cents">.00</span></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap"><span class="ldg-pill in">+80.5% vs yesterday</span><span class="ldg-pill">18 payments</span><span class="ldg-pill out">2 declined</span></div>
+    </div>
+  </section>
+  <section class="ldg-trend">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+      <div class="ldg-eyebrow">Taken per day · Aug 12 – today</div>
+      <div class="ldg-stats"><span>3-week total <strong>$18,690.00</strong></span><span>Weekday avg <strong>$886</strong></span><span>Best day <strong class="in">Today</strong></span></div>
+    </div>
+    <div class="ldg-area" id="area"><div class="grid"><i></i><i></i><i></i><i></i></div><div class="max">$2,412.00</div><svg viewBox="0 0 1000 170" preserveAspectRatio="none"><path class="fill"></path><path class="line"></path></svg><div class="today"></div></div>
+    <div class="ldg-axis"><span>Aug 12</span><span>Aug 19</span><span>Aug 26</span><span class="in">Today</span></div>
+  </section>
+  <main class="ldg-main">
+    <section>
+      <div class="ldg-thread">
+        <div class="ldg-user">How much did we take last week compared to the week before?</div>
+        <div class="ldg-turn">
+          <ul class="ldg-trail"><li><span class="stamp ">PLAN</span><div class="line">Compare two full weeks: Aug 24–30 against Aug 17–23. Query each window and report both totals with their date ranges.</div></li><li><span class="stamp act">ACT</span><div class="line"><span class="ldg-mono">query_payments</span> {"start_date":"2026-08-24","end_date":"2026-08-30","limit":1}</div></li><li><span class="stamp act">ACT</span><div class="line"><span class="ldg-mono">query_payments</span> {"start_date":"2026-08-17","end_date":"2026-08-23","limit":1}</div></li><li><span class="stamp ">OBS</span><div class="line"><details><summary>2 results returned</summary></details></div></li></ul>
+          <div class="ldg-bubble">
+            <p>Last week was up <strong>14.6%</strong> on the week before.</p>
+            <div class="ldg-compare">
+              <div><div class="ldg-eyebrow">Aug 17 – 23</div><div class="ldg-figure md" style="margin:2px 0 8px">$4,610<span style="color:var(--ink-3);font-size:14px;font-weight:400"> · 38</span></div><div class="ldg-bars" data-bars="780,640,1110,930,690,210,250" data-max="1180"></div></div>
+              <div><div class="ldg-eyebrow in">Aug 24 – 30</div><div class="ldg-figure md in" style="margin:2px 0 8px">$5,284<span style="color:var(--ink-3);font-size:14px;font-weight:400"> · 41</span></div><div class="ldg-bars" data-bars="910,1180,760,1020,840,330,244" data-max="1180" data-tone="in"></div></div>
+            </div>
+            <div class="ldg-axis xs"><span>M T W T F S S</span><span>M T W T F S S</span></div>
+            <p class="small" style="margin-top:12px">$674.00 more across three additional payments. Tuesday Aug 25 was the strongest day in either week; no declines or refunds in either.</p>
+          </div>
+        </div>
+        <div class="ldg-user">Refund Maya's last payment.</div>
+        <div class="ldg-turn">
+          <ul class="ldg-trail"><li><span class="stamp ">PLAN</span><div class="line">Find Maya's customer id, then her most recent successful payment, then propose the refund.</div></li><li><span class="stamp act">ACT</span><div class="line"><span class="ldg-mono">find_customer</span> {"query":"Maya"}</div></li><li><span class="stamp act">ACT</span><div class="line"><span class="ldg-mono">query_payments</span> {"customer_id":"cus_Qx8mR2kL9vT4pN","status":"succeeded","limit":1}</div></li><li><span class="stamp ask">ASK</span><div class="line">Waiting for your approval</div></li></ul>
+          <div class="ldg-bubble confirm" id="confirm">
+            <div class="ldg-eyebrow wait">Needs your approval</div>
+            <div style="display:flex;align-items:baseline;gap:12px;margin:6px 0 2px"><span class="ldg-figure lg out">−$45.00</span><span style="font-size:16px">to <strong>Maya Chen</strong></span></div>
+            <div style="color:var(--ink-2);font-size:14px">Consulting · pi_3Qk2LxHt7wA1 · paid today at 09:14</div>
+            <div class="actions"><button class="ldg-btn" id="approve">Approve refund</button><button class="ldg-btn secondary" id="cancel">Cancel</button></div>
+          </div>
+          <div class="ldg-bubble" id="receipt" hidden><div class="ldg-receipt"><div class="head ldg-eyebrow in"><i class="ldg-dot"></i>Refund issued</div><span class="ldg-figure lg out">−$45.00</span><div style="font-size:14px;color:var(--ink-2)">to Maya Chen · <span class="ldg-mono">re_3Qk2LxHt7wA1p0Zf</span></div><span class="ldg-pill in solid">succeeded</span></div></div>
+        </div>
+        <div class="ldg-user">Create a $250 invoice for Acme Corp due next Friday</div>
+        <div class="ldg-turn">
+          <ul class="ldg-trail"><li><span class="stamp act">ACT</span><div class="line"><span class="ldg-mono">find_customer</span> {"query":"Acme Corp"}</div></li><li><span class="stamp err">ERR</span><div class="line"><span class="ldg-mono">find_customer</span> failed: Stripe rejected the request — check that STRIPE_SECRET_KEY in .env is a test-mode key</div></li></ul>
+          <div class="ldg-error"><span>The assistant could not finish this turn.</span><button class="ldg-btn danger">Retry</button></div>
+        </div>
+      </div>
+      <div style="height:20px"></div>
+      <form class="ldg-composer" id="composer"><input aria-label="Command" placeholder="Ask Ledger — refund, invoice, compare…"><button class="ldg-btn" type="submit">Send</button></form>
+    </section>
+    <aside class="ldg-rail">
+      <section class="ldg-rail-section"><div class="ldg-eyebrow">Today by hour</div><div class="ldg-bars rail" data-bars="0,45,190,268,412,95,310,486,340,146,120" data-tone="ink"></div><div class="ldg-axis"><span>8am</span><span>1pm</span><span>6pm</span></div><div class="note">Busiest at 3pm: $486.00 across 3 payments. Nothing before 9.</div></section>
+      <section class="ldg-rail-section"><div class="ldg-eyebrow">Top customers · 3 weeks</div><div class="ldg-ranked" id="ranked"></div></section>
+      <section class="ldg-rail-section"><div class="ldg-eyebrow">Unpaid · $3,780.00</div><div class="ldg-list">
+        <div class="row"><span>Acme Corp <span class="sub">· Annual licence</span></span><span class="ldg-mono">$2,400.00</span></div>
+        <div class="row"><span>Acme Corp <span class="sub">· Q3 retainer</span></span><span class="ldg-mono">$1,200.00</span></div>
+        <div class="row"><span>Maya Chen <span class="sub">· Workshop, due Mon</span></span><span class="ldg-mono">$180.00</span></div></div></section>
+      <div class="ldg-card wait" id="esc">
+        <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="ldg-eyebrow wait">Waiting on you</span><span class="ldg-mono" style="font-size:11px;color:var(--ink-3)">10:42 AM</span></div>
+        <div class="headline">Acme Corp wants to pay <span class="ldg-figure">$2,400.00</span></div>
+        <div style="color:var(--ink-2);font-size:14px;margin-bottom:12px">At or above the bot's $2,000 limit. Approving sends them a Stripe payment link on Telegram.</div>
+        <button class="ldg-btn block lg" id="escBtn">Approve and notify</button>
+      </div>
+    </aside>
+  </main>
+</div>
+<script>
+document.querySelectorAll('.ldg-bars[data-bars]').forEach(el=>{const v=el.dataset.bars.split(',').map(Number),m=Number(el.dataset.max)||Math.max(...v),h=parseFloat(getComputedStyle(el).height);el.innerHTML=v.map(x=>'<i class="'+(el.dataset.tone||'')+'" style="height:'+Math.max(2,Math.round(x/m*h))+'px"></i>').join('');});
+(function(){const v=[860,1040,720,190,260,780,640,1110,930,690,210,250,910,1180,760,1020,840,330,244,870,1336,2412],W=1000,H=170,p=12,m=Math.max(...v);const pts=v.map((x,i)=>[i/(v.length-1)*W,H-p-x/m*(H-2*p)]);const d='M'+pts.map(q=>q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' L');const a=document.getElementById('area');a.querySelector('.line').setAttribute('d',d);a.querySelector('.fill').setAttribute('d',d+' L'+W+' '+H+' L0 '+H+' Z');a.querySelector('.today').style.top=(pts[pts.length-1][1]/H*100).toFixed(1)+'%';})();
+(function(){const rows=[['Acme Corp',486000],['Maya Chen',394000],['Novak Group',221000],['Hendricks-Vasquez',193000],['Priya Raman',164000]];const f=c=>'$'+Math.floor(c/100).toLocaleString('en-US')+'.'+String(c%100).padStart(2,'0');document.getElementById('ranked').innerHTML=rows.map((r,i)=>'<div class="row"><span class="rank">'+String(i+1).padStart(2,'0')+'</span><div><div class="name">'+r[0]+'</div><div class="track"><i style="width:'+(r[1]/rows[0][1]*100).toFixed(0)+'%"></i></div></div><span class="val">'+f(r[1])+'</span></div>').join('');})();
+document.getElementById('approve').onclick=()=>{document.getElementById('confirm').querySelector('.actions').outerHTML='<div class="ldg-eyebrow" style="margin-top:8px">Approved</div>';document.getElementById('receipt').hidden=false;};
+document.getElementById('cancel').onclick=()=>{document.getElementById('confirm').querySelector('.actions').outerHTML='<div class="ldg-eyebrow" style="margin-top:8px">Cancelled</div>';};
+document.getElementById('escBtn').onclick=e=>{e.target.disabled=true;e.target.textContent='Approving…';setTimeout(()=>{e.target.textContent='Notified on Telegram';e.target.classList.add('secondary');},800);};
+document.getElementById('theme').onclick=e=>{const d=document.documentElement.dataset.theme==='dark';document.documentElement.dataset.theme=d?'':'dark';e.target.textContent=d?'Dark':'Light';};
+document.getElementById('composer').onsubmit=e=>{e.preventDefault();const i=e.target.querySelector('input');if(!i.value.trim())return;const t=document.querySelector('.ldg-thread');const u=document.createElement('div');u.className='ldg-user';u.textContent=i.value;t.appendChild(u);i.value='';};
+</script>
+</body></html>

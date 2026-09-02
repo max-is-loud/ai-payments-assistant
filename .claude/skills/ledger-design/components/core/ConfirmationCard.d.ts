@@ -1,0 +1,2 @@
+export interface ConfirmationCardProps { action: string; amountCents: number; toName: string; meta?: string; decided?: "approved" | "cancelled"; busy?: boolean; onApprove?: () => void; onCancel?: () => void; tone?: "" | "in" | "out" }
+export function ConfirmationCard(p: ConfirmationCardProps): JSX.Element;

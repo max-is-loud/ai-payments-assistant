@@ -1,0 +1,14 @@
+<!-- @dsCard group="Components" viewport="700x560" name="Core" subtitle="Buttons, pills, figures, bubbles, receipt, error strip, composer" -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Ledger components</title><link rel="stylesheet" href="../../styles.css"></head><body style="padding:20px;background:var(--paper)">
+<div style="display:grid;gap:18px">
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="ldg-btn">Approve refund</button><button class="ldg-btn secondary">Cancel</button><button class="ldg-btn danger">Retry</button><button class="ldg-btn" disabled>Working…</button></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="ldg-pill in">+80.5% vs yesterday</span><span class="ldg-pill">18 payments</span><span class="ldg-pill out">2 declined</span><span class="ldg-pill wait">open</span><span class="ldg-pill in solid">succeeded</span></div>
+  <div style="display:flex;gap:24px;align-items:baseline"><span class="ldg-figure xl in">$2,412<span class="cents">.00</span></span><span class="ldg-figure lg out">−$45.00</span><span class="ldg-figure md">$4,610</span><span class="ldg-figure" style="font:var(--figure-sm)">$1,200.00</span></div>
+  <div class="ldg-thread">
+    <div class="ldg-user">Refund Maya's last payment.</div>
+    <div class="ldg-bubble confirm" style="animation:none"><div class="ldg-eyebrow wait">Needs your approval</div><div style="display:flex;align-items:baseline;gap:12px;margin:6px 0 2px"><span class="ldg-figure lg out">−$45.00</span><span style="font-size:16px">to <strong>Maya Chen</strong></span></div><div style="color:var(--ink-2);font-size:14px">Consulting · pi_3Qk2LxHt7wA1 · paid today at 09:14</div><div class="actions"><button class="ldg-btn">Approve refund</button><button class="ldg-btn secondary">Cancel</button></div></div>
+    <div class="ldg-bubble"><div class="ldg-receipt"><div class="head ldg-eyebrow in"><i class="ldg-dot"></i>Refund issued</div><span class="ldg-figure lg out">−$45.00</span><div style="font-size:14px;color:var(--ink-2)">to Maya Chen · <span class="ldg-mono">re_3Qk2LxHt7wA1p0Zf</span></div><span class="ldg-pill in solid">succeeded</span></div></div>
+    <div class="ldg-error"><span>The assistant could not finish this turn.</span><button class="ldg-btn danger">Retry</button></div>
+  </div>
+  <form class="ldg-composer"><input placeholder="Ask Ledger — refund, invoice, compare…"><button class="ldg-btn" type="button">Send</button></form>
+</div></body></html>
