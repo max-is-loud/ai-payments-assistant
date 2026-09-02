@@ -50,6 +50,13 @@ record, including the reasoning behind every choice below, is
 - Stripe is the source of truth for money. SQLite holds only what Stripe
   cannot: conversations, pending confirmations, Telegram bindings,
   escalations, and the audit log.
+- Each channel gets the richest format it can display, and neither gets the
+  other's. The web system message asks for GitHub-flavored Markdown and the
+  SPA renders it (raw HTML is escaped to visible text); the Telegram system
+  message asks for Telegram's three-tag HTML dialect and every send passes
+  through a boundary that escapes, strips, or downgrades anything Telegram
+  would reject. The prompt asks for the format; the boundary guarantees a
+  displayable message.
 
 ## API design choices
 
@@ -181,10 +188,10 @@ reviewer's first fifteen minutes:
 
 ## Testing
 
-`make test` runs the full suite with no network calls and no LLM: the
-executor depends on a narrow `StripeGateway` protocol and an `LLMBackend`
-protocol, and tests supply fakes for both. The load-bearing claims each have
-a test behind them:
+`make test` runs the backend suite (pytest) and then the web suite (vitest),
+with no network calls and no LLM: the executor depends on a narrow
+`StripeGateway` protocol and an `LLMBackend` protocol, and tests supply fakes
+for both. The load-bearing claims each have a test behind them:
 
 - The bot rejects a payment at or above $2,000 before any Stripe call is
   made, not after.
@@ -194,7 +201,13 @@ a test behind them:
 - `occurred_at` prefers `metadata.demo_created_at` and falls back to
   Stripe's `created` — the one place the seed concession is read.
 - The executor rejects malformed or unregistered actions before they reach
-  any handler.
+  any handler, and treats a `null` parameter as omitted.
+- No text reaches Telegram that Telegram would reject: allowed tags pass
+  balanced, reserved characters are escaped, unknown tags are stripped, and
+  unbalanced or forbidden nesting downgrades to plain text.
+- Neither channel's system message contains the other's formatting rules.
+- The web app renders lists, tables, and emphasis from model text and never
+  renders raw HTML or a `javascript:` link.
 
 `uv run pytest -m live_llm` runs the one test that calls a real model; it is
 deselected by default (`addopts = -m 'not live_llm'` in `pyproject.toml`) and

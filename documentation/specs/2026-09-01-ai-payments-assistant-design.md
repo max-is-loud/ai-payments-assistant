@@ -306,6 +306,16 @@ Vite, React, TypeScript. Beyond the required input and response area:
   pills
 - Escalations panel for the bonus loop
 
+Model text is rendered as GitHub-flavored Markdown, and the web system message
+says so, so a list of payments arrives as a list. Telegram cannot render
+Markdown — only a three-tag HTML dialect, and it rejects the whole message on
+any parse error — so the bot's system message asks for that dialect instead.
+Each channel's system message is built by its own function carrying its own
+formatting rules; there is no builder that could pair the wrong two. Neither
+side trusts the prompt: `react-markdown` escapes raw HTML and empties unsafe
+links, and the bot's send path sanitizes to balanced allowed tags or
+downgrades to plain text.
+
 ## 8. Bonus: the escalation loop
 
 The brief requires payments at or above $2,000 to be handed to the owner. Most
@@ -341,6 +351,9 @@ Tests go where claims are load-bearing.
 | Confirmed action executes the stored action, not a re-plan | The safety claim |
 | `occurred_at` prefers `demo_created_at`, falls back to `created` | Pins the one concession |
 | Executor rejects malformed or unknown actions | The LLM boundary |
+| Telegram send path never produces a message Telegram rejects | A dropped reply is a silent failure |
+| Neither channel's system message carries the other's formatting rules | No accidental crossovers |
+| Web renders Markdown lists and tables, never raw HTML or `javascript:` links | The web formatting boundary |
 
 All run without an LLM and without network. The executor depends on a narrow
 `StripeGateway` protocol; tests supply a fake. Planner tests are one smoke case
@@ -377,4 +390,5 @@ reads as judgment where silence reads as oversight.
 - **Email verification for bot binding** — preferred in production, untestable
   against a fresh sandbox with generated addresses
 - **Session auth, multi-owner, rate limiting** — single-owner proof of concept
-- **Frontend tests** — the backend claims are the ones worth proving
+- **Frontend tests beyond the Markdown boundary** — the backend claims are the
+  ones worth proving

@@ -69,6 +69,38 @@
   claim and every terminal status change immediately, before any exception
   can propagate past it, and a regression test asserts an unregistered or
   invalid stored action ends up `failed` and never executable again.
+- **Formatting crossed channels.** A first walkthrough asked for "a list of
+  all payments made today" and got a wall of text: the model had written a
+  correct Markdown bulleted list, but the web bubble rendered it as a bare
+  string, so the browser collapsed every newline into a space. The deeper
+  problem was that no prompt stated an output format for conversational
+  answers, so each model chose its own — and the two channels can display
+  different things. The web app can render GitHub-flavored Markdown;
+  Telegram renders only a three-tag HTML dialect (`<b>`, `<i>`, `<code>`),
+  has no lists or tables at all, and rejects the *whole message* on any
+  parse error, so a stray `<u>` or an unescaped `&` would mean the customer
+  receives nothing. The solution is one system message per channel, each
+  carrying its own formatting contract — Markdown lists and tables and no
+  retyped ids for the owner, three tags and no Markdown for the customer —
+  built by two separate functions so there is no call that could pair the
+  wrong two, with a test that neither prompt contains the other's rules.
+  Neither side trusts the prompt: `react-markdown` renders the web text
+  (raw HTML is escaped to visible text, `javascript:` links are emptied),
+  and every Telegram send passes through a sanitizer that keeps balanced
+  allowed tags, escapes reserved characters, strips unknown tags, and
+  downgrades to plain text on any nesting Telegram forbids — the prompt
+  asks for the format; the boundary guarantees a deliverable message.
+- **Three wasted round-trips, found by watching the trail.** The same
+  walkthrough's event trail showed the planner recovering from its own
+  mistakes, each costing a model call: it sent `null` for every parameter
+  it left unset, which failed validation on a defaulted integer (the
+  executor now treats `null` as omitted); it presented twenty of
+  twenty-one payments as "all of them" because the observation truncated
+  silently (it now reports `matched_count` and `listed_count`); and one
+  reply carried a second JSON object after the first, which a
+  first-`{`-to-last-`}` slice could not parse (the parser now decodes the
+  first complete object and ignores what follows). None of these were
+  visible before the trail made every step an event.
 - **An SSE framing mismatch, also caught only in final review.** The server
   streamed sse-starlette's default `\r\n`-separated frames while the
   frontend's hand-rolled parser split on `\n\n`; both curl and httpx's
@@ -95,9 +127,11 @@
   boundary described above.
 - **No session auth, multi-owner support, or rate limiting.** This is a
   single-owner proof of concept behind one bearer token.
-- **No frontend tests.** The backend carries the claims worth proving
-  (the ceiling, scoping, confirmation integrity, the `occurred_at`
-  concession, executor validation); the frontend was judged lower-value to
+- **Frontend tests cover one boundary.** The web suite pins the Markdown
+  renderer — lists and tables render, raw HTML and `javascript:` links do
+  not — and nothing else. The backend carries the claims worth proving (the
+  ceiling, scoping, confirmation integrity, the `occurred_at` concession,
+  executor validation); the rest of the frontend was judged lower-value to
   cover given the time budget.
 - **Stripe pagination beyond demo scale.** Listing and filtering happen in
   Python over `auto_paging_iter()`, fine at ~150 objects, not at production
