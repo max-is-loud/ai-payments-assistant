@@ -35,14 +35,23 @@ export function addDays(iso: string, days: number): string {
   return new Date(parse(iso).getTime() + days * DAY_MS).toISOString().slice(0, 10);
 }
 
+// Today as the API spells it, in the browser's local calendar.
+export function todayIso(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
 export function longDate(now: Date = new Date()): string {
   return now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 }
 
-// "12s ago", "3m ago" — the masthead's sync stamp.
+// "12s ago", "3m ago", "2h ago" — the masthead's sync stamp, which can be
+// hours old when the page paints last-known numbers before fresh ones arrive.
 export function relativeAgo(then: Date, now: Date): string {
   const seconds = Math.max(0, Math.round((now.getTime() - then.getTime()) / 1000));
-  return seconds < 60 ? `${seconds}s ago` : `${Math.round(seconds / 60)}m ago`;
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  return `${Math.round(seconds / 3600)}h ago`;
 }
 
 // The database stores naive UTC timestamps; the suffix tells the browser so.

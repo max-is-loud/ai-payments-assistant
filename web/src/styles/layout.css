@@ -16,6 +16,8 @@
 
 /* — trend — */
 .ldg-trend .head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-9); flex-wrap: wrap; margin-bottom: var(--sp-5); }
+.ldg-area .overlay { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.ldg-area .overlay p { margin: 0; }
 
 /* — conversation — */
 .ldg-confirm-row { display: flex; align-items: baseline; gap: var(--sp-5); margin: var(--sp-2) 0 2px; flex-wrap: wrap; }

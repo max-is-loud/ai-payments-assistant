@@ -1,7 +1,16 @@
 // Dates in the owner app are human ("Aug 24 – 30"); ISO strings from the API
 // are parsed as calendar dates, never shifted by the browser's timezone.
 import { describe, expect, it } from "vitest";
-import { dateRangeLabel, shortDate, weekdayInitial } from "./dates";
+import { dateRangeLabel, relativeAgo, shortDate, weekdayInitial } from "./dates";
+
+describe("relativeAgo", () => {
+  it("counts seconds, then minutes, then hours", () => {
+    const now = new Date("2026-09-02T12:00:00Z");
+    expect(relativeAgo(new Date("2026-09-02T11:59:48Z"), now)).toBe("12s ago");
+    expect(relativeAgo(new Date("2026-09-02T11:57:00Z"), now)).toBe("3m ago");
+    expect(relativeAgo(new Date("2026-09-02T10:00:00Z"), now)).toBe("2h ago");
+  });
+});
 
 describe("shortDate", () => {
   it("renders an ISO date as month and day", () => {

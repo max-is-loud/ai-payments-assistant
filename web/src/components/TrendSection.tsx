@@ -39,7 +39,9 @@ export function TrendSection({ daily }: { daily: DayTotals[] | null }) {
           </div>
         )}
       </div>
-      <AreaChart values={values} maxLabel={stats.totalCents ? formatUsd(Math.max(...values)) : undefined} />
+      <AreaChart values={values} maxLabel={stats.totalCents ? formatUsd(Math.max(...values)) : undefined}>
+        {daily === null && <p className="ldg-empty">Loading three weeks of takings…</p>}
+      </AreaChart>
       <Axis labels={axisLabels(days)} lastTone="in" />
     </section>
   );

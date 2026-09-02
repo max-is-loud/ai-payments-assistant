@@ -1,13 +1,17 @@
+import type { ReactNode } from "react";
+
 // Full-width area trend. One value per day, oldest first; the last point is
 // today and gets the dot. The SVG stretches to the container, so the stroke
 // is drawn with a non-scaling vector effect (in the stylesheet) to stay 2px.
+// `children` render centred over the gridlines — the loading line on a cold start.
 const WIDTH = 1000;
 const PAD = 12;
 
-export function AreaChart({ values, height = 170, maxLabel }: {
+export function AreaChart({ values, height = 170, maxLabel, children }: {
   values: number[];
   height?: number;
   maxLabel?: string;
+  children?: ReactNode;
 }) {
   const max = Math.max(...values, 1);
   const steps = Math.max(values.length - 1, 1);
@@ -25,6 +29,7 @@ export function AreaChart({ values, height = 170, maxLabel }: {
         {line && <path className="line" d={line} />}
       </svg>
       {last && <div className="today" style={{ top: `${((last[1] / height) * 100).toFixed(1)}%` }} />}
+      {children && <div className="overlay">{children}</div>}
     </div>
   );
 }
