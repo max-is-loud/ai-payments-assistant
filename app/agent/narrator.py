@@ -1,6 +1,7 @@
 """Turn typed results into a sentence or two, where no planner is in the loop."""
 
 import json
+from datetime import date
 from typing import Any
 
 from app.agent.events import to_jsonable
@@ -14,10 +15,20 @@ from app.llm.base import ChatMessage, LLMBackend
 
 
 def narrate_summary(llm: LLMBackend, facts: DailyFacts) -> str:
-    """The daily summary paragraph, from facts computed in Python."""
+    """The daily summary paragraph, from facts computed in Python.
+
+    The facts carry ISO dates only, and a model asked for "the day's mood" will
+    otherwise guess the weekday; it is spelled out as `today_is` so the aside
+    can say "Wednesday" and mean it.
+    """
+    today = date.fromisoformat(facts.today.label)
+    payload = {
+        "today_is": f"{today:%A}, {today:%B} {today.day}, {today.year}",
+        **dollar_strings(to_jsonable(facts)),
+    }
     return llm.complete(
         system=summary_system(),
-        messages=[ChatMessage(role="user", content=json.dumps(dollar_strings(to_jsonable(facts))))],
+        messages=[ChatMessage(role="user", content=json.dumps(payload))],
         max_tokens=400,
     ).strip()
 

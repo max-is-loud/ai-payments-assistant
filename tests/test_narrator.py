@@ -55,3 +55,12 @@ def test_narrators_receive_dollars_never_cents() -> None:
     )
     result_payload = llm.calls[1][1][0].content
     assert '"$45.00"' in result_payload and "4500" not in result_payload
+
+
+def test_summary_narration_names_the_weekday_so_the_model_never_guesses_it() -> None:
+    """The facts carry ISO dates only; "A quiet Tuesday" on a Wednesday came from guessing."""
+    llm = ScriptedLLM(["ok"])
+    narrate_summary(llm, build_daily_facts([], [], datetime(2026, 9, 2, 15, tzinfo=UTC)))
+    payload = json.loads(llm.calls[0][1][0].content)
+    assert payload["today_is"] == "Wednesday, September 2, 2026"
+    assert payload["today"]["succeeded_count"] == 0

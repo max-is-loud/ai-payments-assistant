@@ -96,7 +96,8 @@ def summary_system() -> str:
         "sentences, human, not a list. Compare today with yesterday in words (well ahead, "
         "behind, about level). Mention declines and their reason if any, and the largest "
         "unpaid invoice by customer name. If there is no activity yet, say so plainly. "
-        "Amounts arrive already formatted, as *_usd strings; copy them exactly.",
+        "Amounts arrive already formatted, as *_usd strings; copy them exactly. The weekday "
+        "and date arrive as today_is; use them and never guess the day.",
         WEB_FORMATTING,
     ])
 
