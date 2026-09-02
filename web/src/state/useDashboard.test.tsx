@@ -6,7 +6,7 @@
 // Rendered directly inside <StrictMode>: renderHook's wrapper does not trigger
 // the double mount in this environment, a plain render does.
 import { act, render, waitFor } from "@testing-library/react";
-import { StrictMode } from "react";
+import { StrictMode, useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DailyFacts } from "../api/types";
 import { apiFetch } from "../api/client";
@@ -26,17 +26,21 @@ const facts = {
 // Stable, as useConversation's useCallback is; a new function per render would re-run the effect.
 const onMutation = () => () => undefined;
 
-let latest: ReturnType<typeof useDashboard> | null = null;
+// The latest hook result, captured after each commit rather than during render.
+const seen: { latest: ReturnType<typeof useDashboard> | null } = { latest: null };
 
 function Harness() {
-  latest = useDashboard(onMutation);
+  const value = useDashboard(onMutation);
+  useEffect(() => {
+    seen.latest = value;
+  });
   return null;
 }
 
 describe("useDashboard", () => {
   afterEach(() => {
     vi.mocked(apiFetch).mockReset();
-    latest = null;
+    seen.latest = null;
     try {
       window.localStorage.clear();
     } catch {
@@ -59,10 +63,10 @@ describe("useDashboard", () => {
 
     // The surviving mount's request answers first…
     await act(async () => narrations[1]({ facts, text: "Second." }));
-    expect(latest?.summary?.text).toBe("Second.");
+    expect(seen.latest?.summary?.text).toBe("Second.");
 
     // …and the cleaned-up mount's late answer must not replace it.
     await act(async () => narrations[0]({ facts, text: "First." }));
-    expect(latest?.summary?.text).toBe("Second.");
+    expect(seen.latest?.summary?.text).toBe("Second.");
   });
 });
