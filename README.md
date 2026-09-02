@@ -135,6 +135,17 @@ the turn. `compare_periods` is the owner registry's tenth action, added after
 the first live walkthrough showed the planner summing payment rows by hand
 for exactly this question; it returns both totals and the change as facts.
 
+Every dashboard read lists the whole Stripe account, because seeded history
+is dated by metadata rather than `created` and cannot be filtered
+server-side; at demo scale that is six to nine seconds per listing. The API
+therefore reads Stripe through a `CachedGateway` that answers the listings
+from one fetch for 20 seconds (below the page's 30-second poll), lets
+concurrent misses share a single fetch, forgets exactly what the process's
+own writes change, and is warmed at startup. The browser keeps the last good
+numbers from the same day in `localStorage` and paints them immediately under
+"synced 3m ago" while fresh data arrives. `make timing` reproduces the
+measurement against a running API; the before-and-after is in the write-up.
+
 ## Setup
 
 1. **Prerequisites:** [`uv`](https://docs.astral.sh/uv/) for Python, Node

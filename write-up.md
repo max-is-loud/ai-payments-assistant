@@ -174,6 +174,43 @@
   account for two production realities, Markdown inside the assistant's
   bubbles and a loading state before facts arrive, which are the only
   additions the production stylesheet makes.
+- **Eight seconds of "syncing…".** The first smoke test of the redesigned
+  page opened on a dash where the figure should be, gridlines where the chart
+  should be, and a masthead that said "syncing…" for eight seconds. It looked
+  broken. The first step was to measure rather than guess: `make timing`
+  (`scripts/time_reads.py`, committed before any fix so the result would be a
+  before-and-after) times every read the page makes, alone and fired together
+  the way the page fires them. The cause was not the model. Every dashboard
+  read lists the whole account from Stripe with charge and customer
+  expansions, because seeded history is dated by metadata rather than
+  `created` and cannot be filtered server-side — a cost the design accepted
+  knowingly and then paid once per read, three times on load and twice per
+  poll. Three changes, one commit each. `CachedGateway` wraps the Stripe
+  gateway behind the same protocol and answers the three listings from one
+  fetch for a 20-second TTL: concurrent misses wait on a single fetch, and the
+  process's own writes forget exactly what they change (a refund drops
+  payments, paying an invoice drops payments and invoices). The TTL sits
+  below the page's 30-second poll so no poll serves numbers older than one
+  TTL, which also bounds how late the bot's payments reach the owner's
+  screen: at most one poll later than before. The API warms that cache at
+  startup, off the request path. And the browser keeps the last good numbers
+  in `localStorage`, so a reload paints them at once under an honest
+  "synced 3m ago", refuses a snapshot from another day, and swaps in fresh
+  data when it lands; the trend says "Loading three weeks of takings…" on a
+  genuinely cold start instead of showing bare gridlines.
+
+  | Read on page load | Before | After, cache warm |
+  | --- | --- | --- |
+  | Facts (hero, pills, unpaid) | 9.2s | 0.00s |
+  | Series (trend, hourly, top customers) | 9.6s | 0.00s |
+  | Narrated summary (includes the model) | 8.9s | 2.3s |
+  | Three poll reads fired together | 8.5s, two listings | one listing shared (7.7s cold, ms warm) |
+
+  What was deliberately not done: a local mirror of Stripe, synced
+  incrementally by `created` and, in production, by webhooks, would make even
+  the cold path instant. It would also make SQLite a second source of truth
+  for money, which this design avoids on purpose, so it stays the named
+  production path rather than something built for the submission.
 
 ## Limitations / with more time
 
@@ -204,8 +241,12 @@
   ceiling, scoping, confirmation integrity, the `occurred_at` concession,
   executor validation).
 - **Stripe pagination beyond demo scale.** Listing and filtering happen in
-  Python over `auto_paging_iter()`, fine at ~150 objects, not at production
-  volume — that would need server-side filtering or a cache.
+  Python over `auto_paging_iter()`. A 20-second cache shares each listing
+  across the reads that arrive together and is warmed at startup, which keeps
+  the page instant at ~200 objects; at production volume the cold listing
+  itself would be the problem, and the answer is a local mirror synced by
+  `created` and webhooks, deliberately not built here because it makes
+  SQLite a second source of truth for money.
 
 ## Bonus: the escalation loop
 

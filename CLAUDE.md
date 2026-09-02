@@ -72,6 +72,7 @@ make seed                   # populate the sandbox; ARGS=--force / --clean / --t
 make dev                    # API, web, and Telegram bot together
 make test                   # uv run pytest
 make lint                   # uv run ruff check .
+make timing                 # time the dashboard reads against a running API
 ./scripts/check-docs.sh     # wikilink guard + link resolution; run before committing docs
 ```
 

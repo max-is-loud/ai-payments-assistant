@@ -59,7 +59,8 @@ app/
   agent/      loop, action schema, prompts, registries
   llm/        backend protocol and two providers
   actions/    owner actions, customer actions
-  stripe_/    gateway protocol, owner client, customer-scoped client
+  stripe_/    gateway protocol, owner client, customer-scoped client,
+              cached gateway (one listing shared across concurrent reads)
   db/         SQLAlchemy 2.0 typed models
   telegram/   bot and handlers
 seed/         seed script
@@ -423,5 +424,10 @@ reads as judgment where silence reads as oversight.
 - **Email verification for bot binding** — preferred in production, untestable
   against a fresh sandbox with generated addresses
 - **Session auth, multi-owner, rate limiting** — single-owner proof of concept
-- **Frontend tests beyond the Markdown boundary** — the backend claims are the
-  ones worth proving
+- **Frontend layout tests** — the web suite covers the Markdown boundary, the
+  pure chart and money logic, and the behaviour-carrying components; pixels
+  are checked against the UI kit by eye
+- **A local mirror of Stripe** — a short-lived cache shares one listing
+  across concurrent reads and is warmed at startup, which is enough at demo
+  scale; a mirror synced by `created` and webhooks would make even a cold
+  read instant, but makes SQLite a second source of truth for money
