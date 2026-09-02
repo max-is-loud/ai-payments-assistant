@@ -16,7 +16,7 @@ describe("Trail", () => {
 
     const detail = "Error code: 400 - {'type': 'error'}";
     const debug = render(<Trail events={[errorFrame({ ...fields, detail })]} />).container;
-    expect(debug.querySelector("pre.mono")?.textContent).toBe(detail);
+    expect(debug.querySelector("pre.ldg-mono")?.textContent).toBe(detail);
   });
 
   it("renders a failed action as a sentence with the error stamp, not a JSON block", () => {

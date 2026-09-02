@@ -1,86 +1,45 @@
-import { useCallback, useEffect, useState } from "react";
-import { useConversation } from "./state/useConversation";
 import { Composer } from "./components/Composer";
-import { Trail } from "./components/Trail";
-import { ConfirmationCard } from "./components/ConfirmationCard";
-import { ResultCard } from "./components/ResultCard";
-import { apiFetch, describeError } from "./api/client";
-import type { DailyFacts, Escalation, SummaryResponse } from "./api/types";
-import { SummaryCard } from "./components/SummaryCard";
-import { TodayRail } from "./components/TodayRail";
-import { EscalationsPanel } from "./components/EscalationsPanel";
-import { Markdown } from "./components/Markdown";
+import { Hero } from "./components/Hero";
+import { MastheadBand } from "./components/MastheadBand";
+import { Rail } from "./components/rail/Rail";
+import { Thread } from "./components/Thread";
+import { TrendSection } from "./components/TrendSection";
+import { useConversation } from "./state/useConversation";
+import { useDashboard } from "./state/useDashboard";
+import { useTheme } from "./state/useTheme";
 
+// One page: band, hero, trend, then the conversation beside the rail.
 export default function App() {
-  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
   const { turns, busy, error, send, approve, cancel, onMutation } = useConversation();
-  const [summary, setSummary] = useState<SummaryResponse | null>(null);
-  const [facts, setFacts] = useState<DailyFacts | null>(null);
-  const [summaryError, setSummaryError] = useState<string | null>(null);
-  const [escalations, setEscalations] = useState<Escalation[]>([]);
-  const [approving, setApproving] = useState<string | null>(null);
-
-  const refreshFacts = useCallback(() => {
-    apiFetch<SummaryResponse>("/api/summary/today?narrate=false").then((s) => setFacts(s.facts)).catch(() => undefined);
-    apiFetch<Escalation[]>("/api/escalations").then(setEscalations).catch(() => undefined);
-  }, []);
-
-  useEffect(() => {
-    apiFetch<SummaryResponse>("/api/summary/today")
-      .then((s) => { setSummary(s); setFacts(s.facts); })
-      .catch((e) => setSummaryError(describeError(e)));
-    apiFetch<Escalation[]>("/api/escalations").then(setEscalations).catch(() => undefined);
-    const unsubscribe = onMutation(refreshFacts);
-    const timer = setInterval(refreshFacts, 30_000);
-    return () => {
-      clearInterval(timer);
-      unsubscribe();
-    };
-  }, [onMutation, refreshFacts]);
-
-  const approveEscalation = async (id: string) => {
-    setApproving(id);
-    try { await apiFetch(`/api/escalations/${id}/approve`, { method: "POST" }); refreshFacts(); }
-    finally { setApproving(null); }
-  };
-
+  const dashboard = useDashboard(onMutation);
+  const [theme, toggleTheme] = useTheme();
   return (
-    <div className="shell">
-      <header className="masthead">
-        <h1 className="wordmark">Ledger <small>payments assistant</small></h1>
-        <span className="dateline">{today}</span>
-      </header>
-      <main className="grid">
-        <section aria-label="Conversation">
-          <SummaryCard summary={summary} loading={!summary && !summaryError} error={summaryError} />
-          <div className="thread">
-            {turns.length === 0 && <p className="empty">Ask me to refund, invoice, or summarise.</p>}
-            {turns.map((t) =>
-              t.role === "user" ? (
-                <div key={t.id} className="turn user">{t.text}</div>
-              ) : (
-                <div key={t.id} className="turn assistant">
-                  <Trail events={t.events} />
-                  {t.confirmation && (
-                    <ConfirmationCard confirmation={t.confirmation} decided={t.decided} busy={busy}
-                      onApprove={() => approve(t.confirmation!.action_id)} onCancel={() => cancel(t.confirmation!.action_id)} />
-                  )}
-                  {t.result && <ResultCard result={t.result} />}
-                  {t.text && <div className="bubble"><Markdown>{t.text}</Markdown></div>}
-                  {t.error && <div className="error">{t.error}</div>}
-                </div>
-              ),
-            )}
-            {error && <div className="error">{error}</div>}
-          </div>
-          <div style={{ height: 16 }} />
-          <Composer onSend={send} disabled={busy} />
-        </section>
-        <aside className="rail" aria-label="Today and escalations">
-          <TodayRail facts={facts} />
-          <EscalationsPanel escalations={escalations} onApprove={approveEscalation} busyId={approving} />
-        </aside>
-      </main>
-    </div>
+    <>
+      <MastheadBand syncedAt={dashboard.syncedAt} theme={theme} onToggleTheme={toggleTheme} />
+      <div className="ldg-page">
+        <Hero
+          summary={dashboard.summary}
+          loading={!dashboard.summary && !dashboard.summaryError}
+          error={dashboard.summaryError}
+          facts={dashboard.facts}
+        />
+        <TrendSection daily={dashboard.series?.daily ?? null} />
+        <main className="ldg-main">
+          <section aria-label="Conversation">
+            <Thread turns={turns} busy={busy} error={error} onApprove={approve} onCancel={cancel} onRetry={send} />
+            <div className="ldg-thread-gap" />
+            <Composer onSend={send} disabled={busy} />
+          </section>
+          <Rail
+            facts={dashboard.facts}
+            series={dashboard.series}
+            escalations={dashboard.escalations}
+            escalationState={dashboard.escalationState}
+            onApprove={dashboard.approveEscalation}
+            error={dashboard.railError}
+          />
+        </main>
+      </div>
+    </>
   );
 }

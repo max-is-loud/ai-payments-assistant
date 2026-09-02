@@ -1,0 +1,19 @@
+/* Model text rendered as Markdown inside the lede and the assistant bubble:
+   tight paragraphs, real lists, scannable tables. Loaded last so its paragraph
+   spacing wins over the bubble's generic `p` rule. */
+.ldg-prose > :first-child { margin-top: 0; } .ldg-prose > :last-child { margin-bottom: 0; }
+.ldg-prose p { margin: 0 0 var(--sp-3); }
+.ldg-prose ul, .ldg-prose ol { margin: var(--sp-1) 0 var(--sp-3); padding-left: var(--sp-9); } .ldg-prose li { margin: 2px 0; } .ldg-prose li::marker { color: var(--ink-3); }
+.ldg-prose strong { font-weight: 600; } .ldg-prose a { color: var(--accent-ink); }
+.ldg-prose code { font: var(--code); font-size: 13px; background: var(--paper); padding: 1px 5px; border-radius: var(--r-tail); }
+.ldg-prose pre { margin: var(--sp-1) 0 var(--sp-3); padding: var(--sp-3) var(--sp-4); background: var(--paper); border-radius: 6px; overflow-x: auto; font: var(--code); } .ldg-prose pre code { padding: 0; background: none; }
+.ldg-prose h1, .ldg-prose h2, .ldg-prose h3 { font: var(--text-answer); font-weight: 600; margin: var(--sp-3) 0 var(--sp-1); }
+.ldg-prose blockquote { margin: var(--sp-1) 0 var(--sp-3); padding-left: var(--sp-4); border-left: 2px solid var(--rule); color: var(--ink-2); }
+.ldg-prose table { border-collapse: collapse; margin: var(--sp-2) 0 var(--sp-3); font: var(--text-small); font-variant-numeric: tabular-nums; }
+.ldg-prose th, .ldg-prose td { text-align: left; vertical-align: top; padding: 5px var(--sp-6) 5px 0; border-bottom: var(--border-hairline); }
+.ldg-prose th { font: var(--label-mono); font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.ldg-prose tr:last-child td { border-bottom: 0; }
+
+/* The lede is a Markdown paragraph or two at lede size. */
+.ldg-lede .ldg-prose p { font: inherit; margin: 0 0 var(--sp-4); }
+.ldg-lede .ldg-prose strong { font-weight: 600; color: var(--ink); }

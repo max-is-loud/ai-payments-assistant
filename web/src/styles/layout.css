@@ -1,0 +1,36 @@
+/* Layout glue the UI kit expressed as inline styles. Every value is a token. */
+
+/* — masthead — */
+.ldg-band .brand { display: flex; align-items: baseline; }
+.ldg-band .ldg-btn.secondary { padding: 4px 12px; font-size: 12px; color: var(--band-ink); border-color: var(--band-ink-3); }
+
+/* — hero — */
+.ldg-hero .ldg-eyebrow { margin-bottom: var(--sp-3); }
+.ldg-hero .ldg-hero-title { margin-bottom: var(--sp-6); }
+.ldg-hero > .right { text-align: right; }
+.ldg-hero .ldg-figure.xl { display: block; margin: var(--sp-2) 0 var(--sp-4); }
+.ldg-figure.placeholder { color: var(--ink-3); }
+.ldg-pills { display: flex; gap: var(--sp-3); flex-wrap: wrap; }
+.ldg-hero > .right .ldg-pills { justify-content: flex-end; }
+@media (max-width: 960px) { .ldg-hero > .right .ldg-pills { justify-content: flex-start; } }
+
+/* — trend — */
+.ldg-trend .head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-9); flex-wrap: wrap; margin-bottom: var(--sp-5); }
+
+/* — conversation — */
+.ldg-confirm-row { display: flex; align-items: baseline; gap: var(--sp-5); margin: var(--sp-2) 0 2px; flex-wrap: wrap; }
+.ldg-confirm-row .to { font: var(--text-answer); }
+.ldg-meta { color: var(--ink-2); font: var(--text-small); }
+.ldg-bubble .decided { margin-top: var(--sp-3); }
+.ldg-receipt .desc { font: var(--text-small); color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
+.ldg-compare .total { display: flex; align-items: baseline; gap: var(--sp-2); margin: 2px 0 var(--sp-3); }
+.ldg-compare .count { color: var(--ink-3); font-size: 14px; font-weight: 400; }
+.ldg-bubble .ldg-compare + .ldg-axis { margin-bottom: var(--sp-5); }
+.ldg-error .detail { display: block; font: var(--code); color: var(--ink-2); margin-top: var(--sp-1); white-space: pre-wrap; }
+.ldg-thread-gap { height: var(--sp-9); }
+
+/* — rail — */
+.ldg-list .row .sub.out { color: var(--out); }
+.ldg-card .head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-4); }
+.ldg-card .time { font: var(--label-mono); color: var(--ink-3); }
+.ldg-card .body { color: var(--ink-2); font: var(--text-small); margin-bottom: var(--sp-5); }

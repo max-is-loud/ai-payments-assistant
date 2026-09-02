@@ -1,88 +1,9 @@
-:root {
-  --paper: #f6f7f9; --card: #ffffff; --ink: #141821; --ink-2: #4b5160; --ink-3: #8a8f98; --rule: #e1e4ea;
-  --accent: #2b3fd6; --accent-ink: #1f2fa6; --accent-soft: #e7eafb;
-  --in: #1e7d4f; --in-soft: #e4f3ea; --out: #b7372e; --out-soft: #f8e6e4; --wait: #b9770e; --wait-soft: #f8eedc;
-  --font-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
-  --font-body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --radius: 10px; --shadow: 0 1px 2px rgba(20, 24, 33, 0.06), 0 8px 24px -16px rgba(20, 24, 33, 0.25);
-}
-* { box-sizing: border-box; }
-html, body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.5 var(--font-body); }
-button, input, textarea { font: inherit; }
-a { color: var(--accent-ink); }
-.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.amount { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 500; }
-.amount.in { color: var(--in); } .amount.out { color: var(--out); }
-
-.shell { max-width: 1180px; margin: 0 auto; padding: 24px 20px 120px; }
-.masthead { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 20px; }
-.wordmark { font-family: var(--font-display); font-weight: 700; font-size: 28px; letter-spacing: -0.02em; margin: 0; }
-.wordmark small { font-family: var(--font-body); font-weight: 500; color: var(--ink-3); font-size: 14px; margin-left: 10px; letter-spacing: 0; }
-.dateline { color: var(--ink-3); font-family: var(--font-mono); font-size: 13px; }
-
-.grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
-@media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } .rail { order: -1; } }
-
-.card { background: var(--card); border: 1px solid var(--rule); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px; }
-.card h2 { font-family: var(--font-display); font-weight: 700; font-size: 17px; letter-spacing: -0.01em; margin: 0 0 10px; }
-.eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
-.pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
-.pill.open { background: var(--wait-soft); color: var(--wait); } .pill.paid { background: var(--in-soft); color: var(--in); }
-.pill.void, .pill.failed { background: var(--out-soft); color: var(--out); } .pill.neutral { background: var(--accent-soft); color: var(--accent-ink); }
-
-.btn { border: 1px solid var(--rule); background: var(--card); color: var(--ink); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
-.btn:hover { border-color: var(--ink-3); } .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: white; } .btn.primary:hover { background: var(--accent-ink); }
-.btn:disabled { opacity: 0.55; cursor: default; }
-
-.thread { display: flex; flex-direction: column; gap: 14px; }
-.turn.user { align-self: flex-end; max-width: 78%; background: var(--accent-soft); color: var(--accent-ink); padding: 10px 14px; border-radius: 14px 14px 4px 14px; }
-.turn.assistant { display: flex; flex-direction: column; gap: 10px; }
-.bubble { background: var(--card); border: 1px solid var(--rule); border-radius: 14px 14px 14px 4px; padding: 12px 16px; max-width: 78%; overflow-x: auto; }
-
-/* Model text rendered as Markdown: tight paragraphs, real lists, scannable tables. */
-.prose > :first-child { margin-top: 0; } .prose > :last-child { margin-bottom: 0; }
-.prose p { margin: 0 0 8px; }
-.prose ul, .prose ol { margin: 4px 0 8px; padding-left: 20px; } .prose li { margin: 2px 0; } .prose li::marker { color: var(--ink-3); }
-.prose strong { font-weight: 600; } .prose a { color: var(--accent-ink); }
-.prose code { font-family: var(--font-mono); font-size: 13px; background: var(--paper); padding: 1px 5px; border-radius: 4px; }
-.prose pre { margin: 4px 0 8px; padding: 8px 10px; background: var(--paper); border-radius: 6px; overflow-x: auto; font-size: 12px; } .prose pre code { padding: 0; background: none; }
-.prose h1, .prose h2, .prose h3 { font-family: var(--font-display); font-size: 15px; letter-spacing: -0.01em; margin: 8px 0 4px; }
-.prose blockquote { margin: 4px 0 8px; padding-left: 10px; border-left: 2px solid var(--rule); color: var(--ink-2); }
-.prose table { border-collapse: collapse; margin: 6px 0 8px; font-size: 14px; font-variant-numeric: tabular-nums; }
-.prose th, .prose td { text-align: left; vertical-align: top; padding: 5px 14px 5px 0; border-bottom: 1px solid var(--rule); }
-.prose th { font-family: var(--font-mono); font-weight: 500; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
-.prose tr:last-child td { border-bottom: 0; }
-.lede .prose { font-size: 17px; }
-
-.trail { border-left: 2px solid var(--rule); margin-left: 6px; padding-left: 0; list-style: none; margin-top: 0; margin-bottom: 0; }
-.trail li { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; padding: 3px 0 3px 12px; animation: rise 160ms ease-out both; }
-.trail .stamp { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; color: var(--ink-3); padding-top: 3px; }
-.trail .stamp.act { color: var(--accent-ink); } .trail .stamp.ask { color: var(--wait); } .trail .stamp.err { color: var(--out); }
-.trail .line { color: var(--ink-2); font-size: 14px; min-width: 0; }
-.trail details summary { cursor: pointer; color: var(--ink-3); } .trail pre { margin: 6px 0 0; font-size: 12px; overflow-x: auto; background: var(--paper); padding: 8px; border-radius: 6px; }
-@keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-
-.confirm { border: 1px solid var(--wait); background: var(--wait-soft); border-radius: var(--radius); padding: 14px 16px; animation: pulse 900ms ease-out 1; }
-.confirm .actions { display: flex; gap: 8px; margin-top: 10px; }
-@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(185, 119, 14, 0.35); } 100% { box-shadow: 0 0 0 12px rgba(185, 119, 14, 0); } }
-
-.result { border-radius: var(--radius); border: 1px solid var(--rule); background: var(--card); padding: 14px 16px; }
-.result .big { font-size: 28px; line-height: 1.1; margin: 6px 0; }
-.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 14px; } .kv dt { color: var(--ink-3); } .kv dd { margin: 0; }
-
-.composer { position: sticky; bottom: 16px; display: flex; gap: 8px; background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 8px; box-shadow: var(--shadow); }
-.composer:focus-within { border-color: var(--accent); }
-.composer input { flex: 1; border: 0; padding: 10px 12px; background: transparent; outline: none; }
-.composer input::placeholder { color: var(--ink-3); }
-
-.rail { display: flex; flex-direction: column; gap: 16px; }
-.stat { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--rule); } .stat:last-child { border-bottom: 0; }
-.stat .label { color: var(--ink-2); font-size: 14px; }
-.esc { padding: 10px 0; border-bottom: 1px solid var(--rule); } .esc:last-child { border-bottom: 0; }
-.esc .meta { color: var(--ink-3); font-size: 13px; }
-.empty { color: var(--ink-3); font-size: 14px; }
-.error { color: var(--out); font-size: 14px; white-space: pre-wrap; }
-
-@media (prefers-reduced-motion: reduce) { .trail li, .confirm { animation: none; } }
+/* Entry point. Tokens and component classes mirror .claude/skills/ledger-design
+   (the design system of record); layout.css and prose.css are additions the
+   production app needs that the static kit did not. Fonts load from index.html. */
+@import "./styles/tokens/colors.css";
+@import "./styles/tokens/typography.css";
+@import "./styles/tokens/spacing.css";
+@import "./styles/components.css";
+@import "./styles/layout.css";
+@import "./styles/prose.css";

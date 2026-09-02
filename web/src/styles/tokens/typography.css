@@ -1,0 +1,29 @@
+/* Three faces, each with one job:
+   serif  — greetings, headlines, the human voice ("Good morning. A strong Wednesday.")
+   sans   — everything you read
+   mono   — everything you count: figures, ids, eyebrows, stamps, axis labels */
+:root {
+  --font-display: "Instrument Serif", Georgia, serif;
+  --font-body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --text-hero: 400 44px/1.05 var(--font-display);       /* letter-spacing -0.015em */
+  --text-headline: 400 24px/1.15 var(--font-display);   /* rail card headline */
+  --text-wordmark: 400 26px/1 var(--font-display);      /* letter-spacing -0.01em */
+  --text-lede: 400 19px/1.45 var(--font-body);
+  --text-body: 400 15px/1.5 var(--font-body);
+  --text-answer: 400 16px/1.5 var(--font-body);
+  --text-small: 400 14px/1.5 var(--font-body);
+  --text-meta: 400 13px/1.5 var(--font-body);
+
+  --figure-xl: 500 56px/1 var(--font-mono);   /* hero total, letter-spacing -0.03em */
+  --figure-lg: 500 30px/1.1 var(--font-mono); /* confirmation / receipt, -0.02em */
+  --figure-md: 500 26px/1.1 var(--font-mono); /* inline chart totals, -0.02em */
+  --figure-sm: 500 14px/1.5 var(--font-mono); /* table figures */
+  --label-mono: 400 11px/1.4 var(--font-mono); /* eyebrows + stamps: uppercase, letter-spacing .08em */
+  --label-mono-xs: 400 10px/1.4 var(--font-mono); /* axis day letters, .06em */
+  --code: 400 12px/1.5 var(--font-mono);
+}
+html, body { margin: 0; background: var(--paper); color: var(--ink); font: var(--text-body); }
+button, input, textarea { font: inherit; }
+a { color: var(--accent-ink); } a:hover { color: var(--accent); }

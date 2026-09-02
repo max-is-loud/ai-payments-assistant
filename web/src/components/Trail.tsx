@@ -25,12 +25,12 @@ function line(event: AgentEvent): JSX.Element {
   const d = event.data;
   switch (event.type) {
     case "planning": return <span>{String(d.reasoning)}</span>;
-    case "action": return <span><span className="mono">{String(d.name)}</span> {JSON.stringify(d.args)}</span>;
+    case "action": return <span><span className="ldg-mono">{String(d.name)}</span> {JSON.stringify(d.args)}</span>;
     case "observation": {
       const failed = failure(d.result);
-      if (failed) return <span><span className="mono">{String(d.name)}</span> failed: {withHint(failed.error, failed.hint)}</span>;
+      if (failed) return <span><span className="ldg-mono">{String(d.name)}</span> failed: {withHint(failed.error, failed.hint)}</span>;
       return (
-        <details><summary>{String(d.name)} returned</summary><pre className="mono">{JSON.stringify(d.result, null, 2)}</pre></details>
+        <details><summary>{String(d.name)} returned</summary><pre className="ldg-mono">{JSON.stringify(d.result, null, 2)}</pre></details>
       );
     }
     case "confirmation": return <span>Waiting for your approval</span>;
@@ -38,7 +38,7 @@ function line(event: AgentEvent): JSX.Element {
     case "error": return (
       <>
         <span>{withHint(String(d.message), d.hint)}</span>
-        {d.detail ? <pre className="mono">{String(d.detail)}</pre> : null}
+        {d.detail ? <pre className="ldg-mono">{String(d.detail)}</pre> : null}
       </>
     );
     default: return <span />;
@@ -53,7 +53,7 @@ export function Trail({ events }: { events: AgentEvent[] }) {
   const shown = events.filter((e) => e.type !== "answer" && e.type !== "clarify");
   if (!shown.length) return null;
   return (
-    <ul className="trail" aria-label="Agent activity">
+    <ul className="ldg-trail" aria-label="Agent activity">
       {shown.map((e, i) => (
         <li key={i}>
           <span className={`stamp ${stamp(e).cls}`}>{stamp(e).label}</span>

@@ -1,0 +1,17 @@
+/* Spacing is a loose 2px-based ladder; the design uses these values and no others. */
+:root {
+  --sp-1: 4px; --sp-2: 6px; --sp-3: 8px; --sp-4: 10px; --sp-5: 12px; --sp-6: 14px; --sp-7: 16px;
+  --sp-8: 18px; --sp-9: 20px; --sp-10: 24px; --sp-11: 28px; --sp-12: 36px; --sp-13: 40px; --sp-14: 48px;
+  /* radii */
+  --r-bar: 2px;          /* chart bars */
+  --r-tail: 4px;         /* the sharp corner of a speech bubble */
+  --r-card: 14px;        /* rail cards, error strip's rounded side 12px */
+  --r-bubble: 18px;      /* speech bubbles, confirmation + receipt cards */
+  --r-pill: 999px;       /* buttons, badges, composer */
+  /* layout */
+  --page-max: 1200px; --page-x: 40px; --rail-w: 340px; --grid-gap: 48px;
+  /* elevation: none. Hierarchy comes from hairlines and surface steps (paper → card), not shadows. */
+  --shadow-none: none;
+  /* motion */
+  --ease-out: cubic-bezier(.2,.7,.2,1); --dur-fast: 160ms; --dur-pulse: 900ms;
+}

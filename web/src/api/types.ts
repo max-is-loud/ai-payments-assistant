@@ -5,11 +5,20 @@ export interface AgentEvent {
   data: Record<string, unknown>;
 }
 
+// The figure and name the confirmation card leads with; absent when a pending
+// proposal is restored after a reload, in which case the card shows the summary.
+export interface ProposalDetails {
+  amount_cents: number;
+  counterparty: string | null;
+  meta: string | null;
+}
+
 export interface Confirmation {
   action_id: string;
   action: string;
   summary: string;
   parameters: Record<string, unknown>;
+  details?: ProposalDetails | null;
 }
 
 export interface PeriodTotals {
@@ -60,4 +69,29 @@ export interface HistoryResponse {
 export interface ExecutedResult {
   action: string;
   data: Record<string, unknown>;
+}
+
+// GET /api/summary/series — the chart data, computed in Python, no LLM.
+export interface DayTotals {
+  date: string;
+  succeeded_total_cents: number;
+  succeeded_count: number;
+}
+
+export interface HourTotals {
+  hour: number;
+  succeeded_total_cents: number;
+  succeeded_count: number;
+}
+
+export interface CustomerTotals {
+  customer_name: string;
+  succeeded_total_cents: number;
+  succeeded_count: number;
+}
+
+export interface SeriesResponse {
+  daily: DayTotals[];
+  hourly_today: HourTotals[];
+  top_customers: CustomerTotals[];
 }

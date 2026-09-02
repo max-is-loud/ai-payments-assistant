@@ -7,7 +7,7 @@ import remarkGfm from "remark-gfm";
 
 export function Markdown({ children }: { children: string }) {
   return (
-    <div className="prose">
+    <div className="ldg-prose">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
     </div>
   );

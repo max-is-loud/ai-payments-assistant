@@ -87,7 +87,9 @@ def summary_system() -> str:
     """The daily-summary narrator prompt; the summary only ever appears in the web app."""
     return "\n\n".join([
         PERSONALITY,
-        "Write the owner's daily summary from the JSON facts you are given: two or three "
+        "Write the owner's daily summary from the JSON facts you are given. Open with one "
+        "line of at most five words that names the day's mood — for example "
+        "\"A strong Wednesday.\" or \"Quiet so far.\" — then a blank line, then two or three "
         "sentences, human, not a list. Compare today with yesterday in words (well ahead, "
         "behind, about level). Mention declines and their reason if any, and the largest "
         "unpaid invoice by customer name. If there is no activity yet, say so plainly.",
