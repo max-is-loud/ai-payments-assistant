@@ -144,7 +144,7 @@ lets a reviewer dismiss a proposal instead of leaving it pending, and
 
 5. **Run everything.** `make dev` starts the API on `:8000`, the web app on
    `:5173`, and the Telegram bot (long polling, no tunnel needed) together;
-   one `Ctrl-C` stops all three. Open `http://localhost:5173`.
+   one `Ctrl-C` stops all three. Open `http://127.0.0.1:5173`.
 
 6. **Bind Telegram.** In the bot's chat, send `/start <token>` with a token
    `make seed` printed for the customer you want to act as, or open
@@ -157,7 +157,7 @@ lets a reviewer dismiss a proposal instead of leaving it pending, and
 With the sandbox seeded and `make dev` running, this is roughly the
 reviewer's first fifteen minutes:
 
-1. Open `http://localhost:5173` and read the narrated summary the app
+1. Open `http://127.0.0.1:5173` and read the narrated summary the app
    opens with; the live rail's figures should match what `make seed`
    reported.
 2. Ask the web assistant: *"How much did we take last week compared to the

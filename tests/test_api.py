@@ -11,6 +11,7 @@ from sqlalchemy import Engine
 
 from app.api.app import Services, create_app
 from app.db import escalations, pending_actions
+from app.db.clock import utcnow
 from app.db.engine import session_scope
 from app.settings import Settings
 from tests.fakes.llm_fake import ScriptedLLM
@@ -197,7 +198,7 @@ def test_escalation_approval_and_binding_revocation(world: Any, engine: Engine) 
     with session_scope(engine) as session:
         esc_id = escalations.file(
             session, telegram_id=7, customer_id="cus_acme", customer_name="Acme Corp",
-            invoice_id="in_1", amount_cents=120000, reason="ceiling", now=datetime.utcnow(),
+            invoice_id="in_1", amount_cents=120000, reason="ceiling", now=utcnow(),
         ).id
     assert [e["id"] for e in client.get("/api/escalations", headers=AUTH).json()] == [esc_id]
     approved = client.post(f"/api/escalations/{esc_id}/approve", headers=AUTH).json()
