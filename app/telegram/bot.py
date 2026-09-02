@@ -7,6 +7,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Mess
 from app.db.engine import make_engine
 from app.llm.factory import build_backend
 from app.settings import load_settings
+from app.stripe_.cached_gateway import CachedGateway
 from app.stripe_.owner_client import StripeOwnerGateway
 from app.telegram import handlers
 from app.telegram.turns import BotDeps
@@ -31,8 +32,10 @@ def main() -> None:
     settings.require_stripe()
     settings.require_llm()
     settings.require_telegram()
-    deps = BotDeps(settings=settings, gateway=StripeOwnerGateway(settings.stripe_secret_key),
-                   llm=build_backend(settings), engine=make_engine(settings.database_url))
+    deps = BotDeps(
+        settings=settings, gateway=CachedGateway(StripeOwnerGateway(settings.stripe_secret_key)),
+        llm=build_backend(settings), engine=make_engine(settings.database_url),
+    )
     build_application(deps).run_polling()
 
 

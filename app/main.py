@@ -4,6 +4,7 @@ from app.api.app import Services, create_app
 from app.db.engine import make_engine
 from app.llm.factory import build_backend
 from app.settings import load_settings
+from app.stripe_.cached_gateway import CachedGateway
 from app.stripe_.owner_client import StripeOwnerGateway
 from app.telegram.notify import make_notifier
 
@@ -20,7 +21,7 @@ def build_services() -> Services:
     settings.require_owner_token()
     return Services(
         settings=settings,
-        gateway=StripeOwnerGateway(settings.stripe_secret_key),
+        gateway=CachedGateway(StripeOwnerGateway(settings.stripe_secret_key)),
         llm=build_backend(settings),
         engine=make_engine(settings.database_url),
         notify=make_notifier(settings.telegram_bot_token),
