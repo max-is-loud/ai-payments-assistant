@@ -7,6 +7,7 @@ capped so a confused model cannot spin.
 """
 
 import json
+import logging
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -19,6 +20,8 @@ from app.agent.schema import TERMINAL_ACTIONS, ActionSpec, Registry
 from app.domain.policy import MAX_AGENT_ITERATIONS
 from app.llm.base import ChatMessage, LLMBackend, extract_json_object
 from app.stripe_.gateway import StripeGatewayError
+
+log = logging.getLogger(__name__)
 
 GIVE_UP_TEXT = "I couldn't finish that in a few steps. Could you rephrase or narrow it down?"
 RETRY_TEXT = "I made a mistake on that step and am trying again."
@@ -142,6 +145,10 @@ def run_turn(
         except ActionError as exc:
             result = {"error": str(exc)}
         except StripeGatewayError as exc:
+            # The observation feeds the model and the trail; developer detail
+            # belongs in neither, and this is its only exit, so log it here.
+            if exc.detail:
+                log.warning("%s failed: %s (%s)", spec.name, exc, exc.detail)
             result = {"error": str(exc), "hint": exc.hint}
         else:
             hooks.audit(spec.name, args, to_jsonable(result), False)

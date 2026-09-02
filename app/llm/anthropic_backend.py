@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 import anthropic
 
-from app.llm.base import ChatMessage, LLMError
+from app.llm.base import STATUS_ERROR_HINT, ChatMessage, LLMError
 
 
 class AnthropicBackend:
@@ -36,8 +36,12 @@ class AnthropicBackend:
                 "Anthropic rejected the API key.", hint="Check ANTHROPIC_API_KEY in .env."
             ) from exc
         except anthropic.APIStatusError as exc:
+            # exc.message is "Error code: NNN - {json body}": right for the log,
+            # wrong for the owner's screen, so it travels as detail.
             raise LLMError(
-                f"Anthropic API error {exc.status_code}.", hint=str(exc.message)
+                f"Anthropic API error {exc.status_code}.",
+                hint=STATUS_ERROR_HINT,
+                detail=str(exc.message),
             ) from exc
         except anthropic.APIConnectionError as exc:
             raise LLMError(

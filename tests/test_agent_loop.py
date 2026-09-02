@@ -1,13 +1,16 @@
 """The loop: observe and iterate, stop on answer/clarify, pause on mutations, cap at five."""
 
 import json
+import logging
 from typing import Any
 
+import pytest
 from pydantic import BaseModel
 
 from app.agent.loop import GIVE_UP_TEXT, RETRY_TEXT, TurnHooks, run_turn
 from app.agent.schema import ActionSpec, Proposal, Registry
 from app.domain.policy import MAX_AGENT_ITERATIONS
+from app.stripe_.gateway import StripeGatewayError
 from tests.fakes.llm_fake import ScriptedLLM
 
 
@@ -139,3 +142,27 @@ def test_planner_mistakes_read_as_a_retry_with_the_raw_text_kept_as_detail() -> 
     assert error.type == "error"
     assert error.data["code"] == "planner_retry" and error.data["message"] == RETRY_TEXT
     assert "JSON" not in error.data["message"] and "JSON" in error.data["detail"]
+
+
+def test_stripe_detail_from_a_failed_action_is_logged_and_kept_from_the_model(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The observation stays {error, hint} for the model and the trail; SDK text goes to the log."""
+
+    def failing(_ctx: Any, _params: EchoParams) -> dict[str, str]:
+        """A handler whose Stripe call failed with developer detail attached."""
+        raise StripeGatewayError(
+            "Stripe couldn't complete that.", hint="Try again.", detail="Connection reset"
+        )
+
+    registry = Registry([ActionSpec("echo", "Echo text", EchoParams, failing)])
+    llm = ScriptedLLM([_call("echo", text="hi"), _call("answer", text="ok")])
+    with caplog.at_level(logging.WARNING, logger="app.agent.loop"):
+        events = list(run_turn(
+            llm=llm, registry=registry, ctx={}, system="sys", history=[], prompt="go",
+            hooks=_hooks([], []),
+        ))
+    observation = events[2].data["result"]
+    assert observation == {"error": "Stripe couldn't complete that.", "hint": "Try again."}
+    assert "Connection reset" in caplog.text
+    assert "Connection reset" not in llm.calls[1][1][-1].content

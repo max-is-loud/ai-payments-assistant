@@ -57,8 +57,12 @@ def translate_stripe_errors() -> Iterator[None]:
             raise NotFound(exc.user_message or str(exc)) from exc
         raise StripeGatewayError(exc.user_message or str(exc)) from exc
     except stripe.StripeError as exc:
+        # Transport and server failures word themselves for a developer; the
+        # owner gets a sentence and the SDK's text rides along as detail.
         raise StripeGatewayError(
-            str(exc), hint="Check the Stripe dashboard logs for the request."
+            "Stripe couldn't complete that request.",
+            hint="Try again. The Stripe dashboard's request log shows what failed.",
+            detail=str(exc),
         ) from exc
 
 

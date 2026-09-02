@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 import openai
 
-from app.llm.base import ChatMessage, LLMError
+from app.llm.base import STATUS_ERROR_HINT, ChatMessage, LLMError
 
 
 class OpenAIBackend:
@@ -37,8 +37,12 @@ class OpenAIBackend:
                 "OpenAI rejected the API key.", hint="Check OPENAI_API_KEY in .env."
             ) from exc
         except openai.APIStatusError as exc:
+            # exc.message is "Error code: NNN - {json body}": right for the log,
+            # wrong for the owner's screen, so it travels as detail.
             raise LLMError(
-                f"OpenAI API error {exc.status_code}.", hint=str(exc.message)
+                f"OpenAI API error {exc.status_code}.",
+                hint=STATUS_ERROR_HINT,
+                detail=str(exc.message),
             ) from exc
         except openai.APIConnectionError as exc:
             raise LLMError(

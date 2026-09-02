@@ -36,6 +36,16 @@ def test_card_error_becomes_card_declined() -> None:
             raise stripe.CardError("Your card was declined.", "payment_method", "card_declined")
 
 
+def test_transport_failure_reads_as_a_sentence_with_the_sdk_text_as_detail() -> None:
+    """A network or server failure must not put the SDK's own message on the owner's screen."""
+    with pytest.raises(StripeGatewayError) as excinfo:
+        with translate_stripe_errors():
+            raise stripe.APIConnectionError("Connection reset by peer")
+    assert "Connection reset" not in str(excinfo.value)
+    assert "Connection reset" in excinfo.value.detail
+    assert excinfo.value.hint
+
+
 def test_client_pins_the_api_version() -> None:
     """The API version is pinned explicitly rather than drifting with the account default."""
     gateway = StripeOwnerGateway("sk_test_placeholder")

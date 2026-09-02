@@ -10,6 +10,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
+STATUS_ERROR_HINT = (
+    "Try again in a moment. If it keeps happening, check LLM_MODEL in .env and the "
+    "provider's status page."
+)
+"""The next step for any 4xx/5xx from a provider; the raw body is developer detail."""
+
 
 @dataclass(frozen=True)
 class ChatMessage:
