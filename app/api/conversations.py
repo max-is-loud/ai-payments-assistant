@@ -15,7 +15,7 @@ from app.agent.confirm import ConfirmationError, UnknownAction, execute_pending
 from app.agent.events import AgentEvent
 from app.agent.loop import TurnHooks, run_turn
 from app.agent.narrator import narrate_result
-from app.agent.prompts import OWNER_NOTES, planner_system
+from app.agent.prompts import web_planner_system
 from app.api.auth import require_owner
 from app.api.sse import sse_response
 from app.db import audit, conversations, pending_actions
@@ -89,9 +89,7 @@ def post_message(conversation_id: str, body: MessageIn, request: Request) -> Any
             conversations.append(session, conversation_id, "user", body.text)
             session.commit()
             ctx = _ctx(request, session)
-            system = planner_system(
-                registry=OWNER_REGISTRY, today=ctx.now.date(), channel_notes=OWNER_NOTES
-            )
+            system = web_planner_system(registry=OWNER_REGISTRY, today=ctx.now.date())
             hooks = _hooks(session, conversation_id, body.text)
             try:
                 for event in run_turn(

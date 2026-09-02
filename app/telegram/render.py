@@ -1,7 +1,9 @@
 """Turn agent events into a Telegram reply.
 
 Deterministic on purpose: the planner writes the sentence, but which
-buttons appear and what a receipt says is decided here, in Python.
+buttons appear and what a receipt says is decided here, in Python. Reply
+text is Telegram HTML in the `app.telegram.formatting` dialect; the send
+path escapes and validates it.
 """
 
 from dataclasses import dataclass, field
@@ -69,5 +71,5 @@ def receipt_reply(result: dict[str, Any]) -> Reply:
     rows: list[list[InlineKeyboardButton]] = []
     if result.get("receipt_url"):
         rows.append([InlineKeyboardButton("View receipt", url=result["receipt_url"])])
-    text = f"Paid — thank you. Invoice {label} is settled; your receipt is below."
+    text = f"Paid — thank you. Invoice <b>{label}</b> is settled; your receipt is below."
     return Reply(text, rows)

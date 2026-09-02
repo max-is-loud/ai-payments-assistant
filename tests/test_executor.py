@@ -11,6 +11,7 @@ class EchoParams(BaseModel):
     """Parameters for the test-only echo action."""
 
     text: str
+    limit: int = 20
 
 
 def _echo(_ctx: object, params: EchoParams) -> dict[str, str]:
@@ -39,6 +40,13 @@ def test_invalid_parameters_are_rejected_with_field_names() -> None:
     """Missing or mistyped parameters fail validation before execution."""
     with pytest.raises(ActionError, match="text"):
         resolve(REGISTRY, ActionCall(action="echo", parameters={}))
+
+
+def test_null_parameters_mean_omitted() -> None:
+    """Models send `null` for every parameter they leave unset; a default still applies."""
+    call = ActionCall(action="echo", parameters={"text": "hi", "limit": None})
+    _spec, params = resolve(REGISTRY, call)
+    assert params.limit == 20
 
 
 def test_mutation_requires_describe() -> None:

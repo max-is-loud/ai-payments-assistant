@@ -40,4 +40,5 @@ def test_confirmation_and_receipt() -> None:
         "paid": True, "number": "F-0001", "receipt_url": "https://invoice.example/in_1",
     })
     assert "$" not in receipt.text
+    assert "<b>F-0001</b>" in receipt.text
     assert receipt.buttons[0][0].url == "https://invoice.example/in_1"

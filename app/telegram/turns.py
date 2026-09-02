@@ -18,7 +18,7 @@ from app.agent.confirm import ConfirmationError, execute_pending
 from app.agent.events import AgentEvent
 from app.agent.executor import ActionError
 from app.agent.loop import TurnHooks, run_turn
-from app.agent.prompts import CUSTOMER_NOTES, planner_system
+from app.agent.prompts import telegram_planner_system
 from app.db import audit, bindings, conversations, pending_actions
 from app.db.clock import utcnow
 from app.db.engine import session_scope
@@ -124,9 +124,7 @@ def customer_turn(deps: BotDeps, binding: TelegramBinding, text: str) -> list[Ag
         conversations.append(session, conversation_id, "user", text)
         session.commit()
         ctx = _ctx(deps, session, binding)
-        system = planner_system(
-            registry=CUSTOMER_REGISTRY, today=ctx.now.date(), channel_notes=CUSTOMER_NOTES
-        )
+        system = telegram_planner_system(registry=CUSTOMER_REGISTRY, today=ctx.now.date())
         try:
             events = list(run_turn(
                 llm=deps.llm, registry=CUSTOMER_REGISTRY, ctx=ctx, system=system,

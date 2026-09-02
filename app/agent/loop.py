@@ -14,7 +14,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel, ValidationError
 
 from app.agent.events import AgentEvent, to_jsonable
-from app.agent.executor import ActionError, parse_call, resolve
+from app.agent.executor import ActionError, parse_call, resolve, validate_params
 from app.agent.schema import TERMINAL_ACTIONS, ActionSpec, Registry
 from app.domain.policy import MAX_AGENT_ITERATIONS
 from app.llm.base import ChatMessage, LLMBackend, extract_json_object
@@ -97,7 +97,7 @@ def run_turn(
             yield AgentEvent("planning", {"reasoning": call.reasoning})
         if call.action in TERMINAL_ACTIONS:
             try:
-                terminal = TERMINAL_ACTIONS[call.action].model_validate(call.parameters)
+                terminal = validate_params(TERMINAL_ACTIONS[call.action], call.parameters)
             except ValidationError as exc:
                 yield AgentEvent("error", {"message": str(exc)})
                 _feedback(transcript, raw, {"error": f"Invalid {call.action}: {exc}"}, call.action)

@@ -6,6 +6,7 @@ from telegram import InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from app.telegram import turns
+from app.telegram.formatting import outgoing_message
 from app.telegram.render import NOT_CONNECTED_TEXT, Reply, reply_for
 
 WELCOME = ("Hi, I'm Ledger. I can tell you what you owe and take payment for your invoices. "
@@ -21,10 +22,10 @@ def _deps(context: ContextTypes.DEFAULT_TYPE) -> turns.BotDeps:
 
 
 async def _send(update: Update, reply: Reply) -> None:
-    """Send a Reply to the effective chat."""
+    """Send a Reply to the effective chat, through the HTML formatting boundary."""
     markup = InlineKeyboardMarkup(reply.buttons) if reply.buttons else None
     assert update.effective_chat is not None
-    await update.effective_chat.send_message(reply.text, reply_markup=markup)
+    await update.effective_chat.send_message(**outgoing_message(reply.text), reply_markup=markup)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

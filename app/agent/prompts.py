@@ -1,4 +1,12 @@
-"""System prompts. The personality is defined once and shared by planner and narrator."""
+"""System prompts. One personality, shared; one formatting contract per channel.
+
+The web app renders GitHub-flavored Markdown and Telegram renders a three-tag
+HTML dialect, so each channel's system message carries its own formatting
+rules and there is no builder that could pair the wrong two. The prompt asks
+for the format; the boundaries — `react-markdown` on the web,
+`app.telegram.formatting` on the bot — guarantee that whatever arrives is
+displayable.
+"""
 
 from datetime import date
 
@@ -26,6 +34,21 @@ CUSTOMER_NOTES = (
     "sentences. Do not state invoice amounts in replies; the customer can tap to view them."
 )
 
+WEB_FORMATTING = (
+    "Formatting: your text is rendered as GitHub-flavored Markdown in the owner's web app. "
+    "Bold the figure that answers the question. When you report more than two items, use a "
+    "bulleted list or a table with one item per line; never run them together in a sentence. "
+    "Do not retype long ids (pi_..., in_..., cus_...) in lists — the interface already shows "
+    "them; name the customer, amount, status, and description instead. Never use HTML tags."
+)
+
+TELEGRAM_FORMATTING = (
+    "Formatting: your text is sent to Telegram as HTML. The only tags that render are <b>, <i>, "
+    "and <code>; use <b> for an invoice number or a due date. Markdown does not render on "
+    "Telegram, so no asterisks, underscores, # headings, pipes, or dashes as list markers; they "
+    "would appear as literal characters. Separate items with line breaks."
+)
+
 PROTOCOL = (
     "Reply with exactly one JSON object and nothing else:\n"
     '{"reasoning": "why this step", "action": "<name>", "parameters": {...}}\n'
@@ -37,35 +60,46 @@ PROTOCOL = (
 )
 
 
-def planner_system(*, registry: Registry, today: date, channel_notes: str) -> str:
-    """The planner prompt: personality, protocol, today's date, action catalog, channel notes."""
+def _planner_system(*, registry: Registry, today: date, channel: str) -> str:
+    """Personality, today's date, protocol, action catalog, then the channel's own rules."""
     return "\n\n".join([
         PERSONALITY,
         f"Today is {today.strftime('%A')}, {today.isoformat()}. Resolve relative dates against it.",
         PROTOCOL,
         "Available actions:\n" + registry.prompt_catalog(),
-        channel_notes,
+        channel,
     ])
 
 
+def web_planner_system(*, registry: Registry, today: date) -> str:
+    """The owner's planner prompt for the web app: owner scope plus Markdown formatting."""
+    channel = "\n\n".join([OWNER_NOTES, WEB_FORMATTING])
+    return _planner_system(registry=registry, today=today, channel=channel)
+
+
+def telegram_planner_system(*, registry: Registry, today: date) -> str:
+    """The customer's planner prompt for the bot: customer scope plus Telegram HTML formatting."""
+    channel = "\n\n".join([CUSTOMER_NOTES, TELEGRAM_FORMATTING])
+    return _planner_system(registry=registry, today=today, channel=channel)
+
+
 def summary_system() -> str:
-    """The daily-summary narrator prompt."""
+    """The daily-summary narrator prompt; the summary only ever appears in the web app."""
     return "\n\n".join([
         PERSONALITY,
         "Write the owner's daily summary from the JSON facts you are given: two or three "
         "sentences, human, not a list. Compare today with yesterday in words (well ahead, "
         "behind, about level). Mention declines and their reason if any, and the largest "
-        "unpaid invoice by customer name. If there is no activity yet, say so plainly. "
-        "Output plain text only.",
+        "unpaid invoice by customer name. If there is no activity yet, say so plainly.",
+        WEB_FORMATTING,
     ])
 
 
 def result_system() -> str:
-    """The post-confirmation narrator prompt."""
+    """The post-confirmation narrator prompt; confirmations are approved in the web app."""
     return "\n\n".join([
         PERSONALITY,
         "An action the user approved has just executed. In one or two sentences, confirm what "
-        "happened using only the JSON you are given. Include a URL if the result has one. "
-        "Do not retype long identifiers; refer to them generically — the interface shows exact "
-        "ids. Plain text.",
+        "happened using only the JSON you are given. Include a URL if the result has one.",
+        WEB_FORMATTING,
     ])

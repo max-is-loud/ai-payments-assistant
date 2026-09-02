@@ -7,6 +7,7 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
 
 from app.actions.context import Notifier, no_notifier
+from app.telegram.formatting import outgoing_message
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +26,9 @@ def make_notifier(token: str) -> Notifier:
                 row = [InlineKeyboardButton("Pay on Stripe", url=url)]
                 markup = InlineKeyboardMarkup([row])
             async with Bot(token) as bot:
-                await bot.send_message(chat_id=telegram_id, text=text, reply_markup=markup)
+                await bot.send_message(
+                    chat_id=telegram_id, **outgoing_message(text), reply_markup=markup
+                )
         try:
             asyncio.run(_go())
             return True
