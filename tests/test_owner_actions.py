@@ -139,6 +139,20 @@ def test_query_payments_filters_and_totals(
         assert [p["id"] for p in maya["payments"]] == ["pi_maya"]
 
 
+def test_query_payments_says_when_the_list_is_cut_short(
+    engine: Engine, account: FakeStripeGateway
+) -> None:
+    """The planner can only say "showing 1 of 2" — or ask for more — if the observation tells it."""
+    with session_scope(engine) as session:
+        ctx = OwnerContext(
+            gateway=account, session=session, now=NOW, notify=lambda *_: True
+        )
+        result = query_payments(ctx, QueryPaymentsParams(limit=1))
+        assert result["matched_count"] == 2
+        assert result["listed_count"] == 1
+        assert len(result["payments"]) == 1
+
+
 def test_find_customer_is_case_insensitive_substring(
     engine: Engine, account: FakeStripeGateway
 ) -> None:

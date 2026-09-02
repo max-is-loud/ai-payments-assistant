@@ -39,22 +39,30 @@ class LLMBackend(Protocol):
 
 
 def extract_json_object(text: str) -> dict[str, Any]:
-    """Parse the first JSON object in a model reply.
+    """Parse the first complete JSON object in a model reply.
 
-    Tolerates code fences and prose around the object because models do
-    both occasionally, and the loop would rather recover than fail a turn.
+    Tolerates code fences, prose before or after, a second object, and
+    braces in trailing text, because models do all of these occasionally
+    and the loop would rather recover than spend a round-trip. Each `{` is
+    tried as a start until one decodes as an object; the error reported is
+    the one from the earliest candidate, which is the model's actual reply.
 
     Raises:
         ValueError: No object could be parsed. The loop feeds this back to the
             planner as an observation so it can try again.
     """
-    start, end = text.find("{"), text.rfind("}")
-    if start == -1 or end == -1 or end < start:
-        raise ValueError("No JSON object found in the model reply")
-    try:
-        parsed = json.loads(text[start : end + 1])
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Malformed JSON in the model reply: {exc.msg}") from exc
-    if not isinstance(parsed, dict):
-        raise ValueError("The model reply must be a JSON object")
-    return parsed
+    decoder = json.JSONDecoder()
+    first_error: str | None = None
+    start = text.find("{")
+    while start != -1:
+        try:
+            parsed, _ = decoder.raw_decode(text, start)
+        except json.JSONDecodeError as exc:
+            first_error = first_error or exc.msg
+        else:
+            if isinstance(parsed, dict):
+                return parsed
+        start = text.find("{", start + 1)
+    if first_error is not None:
+        raise ValueError(f"Malformed JSON in the model reply: {first_error}")
+    raise ValueError("No JSON object found in the model reply")

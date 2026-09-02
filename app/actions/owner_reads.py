@@ -25,7 +25,10 @@ class QueryPaymentsParams(BaseModel):
         20,
         ge=1,
         le=100,
-        description="Max payments to list (totals cover all matches)",
+        description=(
+            "Max payments to list, default 20, up to 100; totals cover every match. "
+            "Raise it when the user asks for all of them"
+        ),
     )
 
 
@@ -85,7 +88,10 @@ def query_payments(ctx: OwnerContext, params: QueryPaymentsParams) -> dict[str, 
         params: Payment filters and limits.
 
     Returns:
-        Dictionary with period label, totals, and paginated payment rows.
+        Dictionary with period label, totals over every match, and the first
+        `limit` rows. `matched_count` and `listed_count` differ when the list
+        is cut short, so the planner can say so or ask for more instead of
+        presenting a partial list as complete.
     """
     payments = ctx.gateway.list_payments()
     if params.customer_id:
@@ -117,6 +123,8 @@ def query_payments(ctx: OwnerContext, params: QueryPaymentsParams) -> dict[str, 
         "declined_count": len(
             [p for p in payments if p.status == "failed"]
         ),
+        "matched_count": len(payments),
+        "listed_count": min(len(payments), params.limit),
         "payments": [_payment_row(p) for p in payments[: params.limit]],
     }
 
