@@ -5,7 +5,7 @@ confirmation card and validates what Stripe would otherwise reject later,
 and a handler that executes with the injected idempotency key.
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from app.actions.context import OwnerContext
 from app.actions.owner_reads import _invoice_row
 from app.agent.executor import ActionError
-from app.agent.schema import Proposal
+from app.agent.schema import Proposal, ProposalDetails
 from app.db import escalations
 from app.domain.money import format_usd
 from app.services.escalations import EscalationNotFound, approve_and_notify
@@ -31,6 +31,13 @@ class RefundParams(BaseModel):
     amount_cents: int | None = Field(None, gt=0, description="Omit to refund the remaining balance")
 
 
+def _paid_when(occurred_at: datetime, now: datetime) -> str:
+    """"paid today at 09:14" or "paid Aug 25 at 09:14", on the owner's clock."""
+    local = occurred_at.astimezone(now.tzinfo)
+    day = "today" if local.date() == now.date() else f"{local:%b %d}"
+    return f"paid {day} at {local:%H:%M}"
+
+
 def describe_refund(ctx: OwnerContext, params: RefundParams) -> Proposal:
     """Resolve the payment and check the amount before asking for approval.
 
@@ -39,7 +46,7 @@ def describe_refund(ctx: OwnerContext, params: RefundParams) -> Proposal:
         params: The payment and optional amount to refund.
 
     Returns:
-        A proposal describing the refund.
+        A proposal describing the refund, with the resolved amount as details.
 
     Raises:
         ActionError: Not refundable, or more than the refundable balance.
@@ -53,10 +60,17 @@ def describe_refund(ctx: OwnerContext, params: RefundParams) -> Proposal:
             f"Only {format_usd(payment.refundable_cents)} is refundable on {params.payment_id}."
         )
     who = payment.customer_name or "the customer"
-    return Proposal(summary=(
-        f"Refund {format_usd(amount)} to {who} — {format_usd(payment.amount_cents)} payment from "
-        f"{payment.occurred_at:%b %d}"
-    ))
+    meta = " · ".join(
+        part for part in (payment.description, payment.id, _paid_when(payment.occurred_at, ctx.now))
+        if part
+    )
+    return Proposal(
+        summary=(
+            f"Refund {format_usd(amount)} to {who} — {format_usd(payment.amount_cents)} payment "
+            f"from {payment.occurred_at:%b %d}"
+        ),
+        details=ProposalDetails(amount_cents=amount, counterparty=payment.customer_name, meta=meta),
+    )
 
 
 def refund_payment(ctx: OwnerContext, params: RefundParams) -> dict[str, Any]:
@@ -99,7 +113,7 @@ def describe_create_invoice(ctx: OwnerContext, params: CreateInvoiceParams) -> P
         params: Invoice details and due date.
 
     Returns:
-        A proposal describing the invoice.
+        A proposal describing the invoice, with the customer and due date as details.
 
     Raises:
         ActionError: Due date is today or earlier.
@@ -107,10 +121,16 @@ def describe_create_invoice(ctx: OwnerContext, params: CreateInvoiceParams) -> P
     if params.due_date <= ctx.now.date():
         raise ActionError("The due date must be in the future.")
     customer = ctx.gateway.get_customer(params.customer_id)
-    return Proposal(summary=(
-        f"Create a {format_usd(params.amount_cents)} invoice for {customer.name} due "
-        f"{params.due_date:%a %b %d, %Y} — {params.description}"
-    ))
+    return Proposal(
+        summary=(
+            f"Create a {format_usd(params.amount_cents)} invoice for {customer.name} due "
+            f"{params.due_date:%a %b %d, %Y} — {params.description}"
+        ),
+        details=ProposalDetails(
+            amount_cents=params.amount_cents, counterparty=customer.name,
+            meta=f"{params.description} · due {params.due_date:%a %b %d}",
+        ),
+    )
 
 
 def create_invoice(ctx: OwnerContext, params: CreateInvoiceParams) -> dict[str, Any]:
@@ -145,13 +165,18 @@ def describe_payment_link(_ctx: OwnerContext, params: PaymentLinkParams) -> Prop
         params: Amount and description.
 
     Returns:
-        A proposal describing the payment link.
+        A proposal describing the payment link; there is no counterparty yet.
     """
     summary = (
         f"Create a payment link for {format_usd(params.amount_cents)} — "
         f"{params.description}"
     )
-    return Proposal(summary=summary)
+    return Proposal(
+        summary=summary,
+        details=ProposalDetails(
+            amount_cents=params.amount_cents, counterparty=None, meta=params.description
+        ),
+    )
 
 
 def create_payment_link(ctx: OwnerContext, params: PaymentLinkParams) -> dict[str, Any]:
@@ -184,7 +209,7 @@ def describe_approve_escalation(ctx: OwnerContext, params: ApproveEscalationPara
         params: The escalation id to approve.
 
     Returns:
-        A proposal describing the approval.
+        A proposal describing the approval and what approving does.
 
     Raises:
         ActionError: Unknown or already decided.
@@ -196,7 +221,13 @@ def describe_approve_escalation(ctx: OwnerContext, params: ApproveEscalationPara
         f"Approve {row.customer_name}'s request to pay "
         f"{format_usd(row.amount_cents)} and send them the payment link on Telegram"
     )
-    return Proposal(summary=summary)
+    return Proposal(
+        summary=summary,
+        details=ProposalDetails(
+            amount_cents=row.amount_cents, counterparty=row.customer_name,
+            meta="Sends a Stripe payment link on Telegram",
+        ),
+    )
 
 
 def approve_escalation(ctx: OwnerContext, params: ApproveEscalationParams) -> dict[str, Any]:

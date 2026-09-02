@@ -9,6 +9,7 @@ from app.agent.events import to_jsonable
 from app.agent.narrator import narrate_summary
 from app.api.auth import require_owner
 from app.domain.periods import local_timezone
+from app.domain.series import build_series
 from app.domain.summary import build_daily_facts
 
 router = APIRouter(prefix="/api/summary", dependencies=[Depends(require_owner)])
@@ -24,3 +25,12 @@ def today(request: Request, narrate: bool = True) -> dict[str, Any]:
     )
     text = narrate_summary(services.llm, facts) if narrate else None
     return {"facts": to_jsonable(facts), "text": text}
+
+
+@router.get("/series")
+def series(request: Request) -> dict[str, Any]:
+    """Per-day, per-hour, and per-customer totals for the charts; never touches the model."""
+    services = request.app.state.services
+    return to_jsonable(
+        build_series(services.gateway.list_payments(), datetime.now(local_timezone()))
+    )

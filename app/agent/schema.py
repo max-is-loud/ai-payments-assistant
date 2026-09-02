@@ -53,16 +53,33 @@ class DescribeHandler(Protocol):
 
 
 @dataclass(frozen=True)
+class ProposalDetails:
+    """The figure and the name a confirmation card leads with.
+
+    The summary sentence remains the human-readable record. These fields exist
+    so the web app can set the amount as a figure and the counterparty in bold
+    without parsing prose. `meta` is one short line of context: what a payment
+    was for and when it was taken, or when an invoice falls due.
+    """
+
+    amount_cents: int
+    counterparty: str | None
+    meta: str | None
+
+
+@dataclass(frozen=True)
 class Proposal:
     """The outcome of describing a mutation before it runs.
 
-    Exactly one field is set. `summary` asks the user to confirm; `resolved`
-    means no mutation is needed after all (the ceiling guard uses this to
-    turn a payment into an escalation record).
+    Exactly one of `summary` and `resolved` is set. `summary` asks the user to
+    confirm, optionally with `details` for the card; `resolved` means no
+    mutation is needed after all (the ceiling guard uses this to turn a
+    payment into an escalation record).
     """
 
     summary: str | None = None
     resolved: Any = None
+    details: ProposalDetails | None = None
 
 
 @dataclass(frozen=True)

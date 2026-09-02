@@ -107,7 +107,7 @@ def test_mutation_pauses_for_confirmation_without_executing() -> None:
     assert events[-1].type == "confirmation"
     assert events[-1].data == {
         "action_id": "act_1", "action": "refund", "summary": "Refund pi_1",
-        "parameters": {"payment_id": "pi_1", "amount_cents": None},
+        "parameters": {"payment_id": "pi_1", "amount_cents": None}, "details": None,
     }
     assert ctx["refunds"] == []
     assert proposals == ["Refund pi_1"]

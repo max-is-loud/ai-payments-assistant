@@ -11,6 +11,7 @@ from app.agent.schema import NoParams
 from app.db import escalations
 from app.domain.models import Invoice, Payment
 from app.domain.periods import date_range_window
+from app.domain.series import DayTotals, daily_totals
 from app.domain.summary import DailyFacts, build_daily_facts, period_totals
 
 
@@ -91,7 +92,8 @@ def query_payments(ctx: OwnerContext, params: QueryPaymentsParams) -> dict[str, 
         Dictionary with period label, totals over every match, and the first
         `limit` rows. `matched_count` and `listed_count` differ when the list
         is cut short, so the planner can say so or ask for more instead of
-        presenting a partial list as complete.
+        presenting a partial list as complete. With a date range, `daily_totals`
+        adds one zero-filled entry per day so the web app can draw the period.
     """
     payments = ctx.gateway.list_payments()
     if params.customer_id:
@@ -99,6 +101,7 @@ def query_payments(ctx: OwnerContext, params: QueryPaymentsParams) -> dict[str, 
     if params.status:
         payments = [p for p in payments if p.status == params.status]
     label = "all time"
+    daily: list[DayTotals] | None = None
     if params.start_date or params.end_date:
         start = params.start_date or date(2000, 1, 1)
         end = params.end_date or ctx.now.date()
@@ -106,10 +109,11 @@ def query_payments(ctx: OwnerContext, params: QueryPaymentsParams) -> dict[str, 
         payments = [p for p in payments if window.contains(p.occurred_at)]
         label = window.label
         totals = period_totals(payments, window)
+        daily = daily_totals(payments, window)
     else:
         totals = None
     succeeded = [p for p in payments if p.status != "failed"]
-    return {
+    result: dict[str, Any] = {
         "period": label,
         "succeeded_count": (
             totals.succeeded_count if totals else len(succeeded)
@@ -127,6 +131,9 @@ def query_payments(ctx: OwnerContext, params: QueryPaymentsParams) -> dict[str, 
         "listed_count": min(len(payments), params.limit),
         "payments": [_payment_row(p) for p in payments[: params.limit]],
     }
+    if daily is not None:
+        result["daily_totals"] = to_jsonable(daily)
+    return result
 
 
 def find_customer(ctx: OwnerContext, params: FindCustomerParams) -> dict[str, Any]:

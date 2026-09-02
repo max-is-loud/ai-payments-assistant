@@ -156,6 +156,8 @@ def test_confirmation_executes_the_stored_action_once_with_the_header_key(world:
     assert events[-1][0] == "confirmation"
     action_id = events[-1][1]["action_id"]
     assert events[-1][1]["summary"].startswith("Refund $45.00 to Maya Chen")
+    assert events[-1][1]["details"]["amount_cents"] == 4500
+    assert events[-1][1]["details"]["counterparty"] == "Maya Chen"
     pending = client.get("/api/conversations/c1", headers=AUTH).json()["pending"]
     assert pending["action_id"] == action_id
     with client.stream("POST", "/api/conversations/c1/confirm", json={"action_id": action_id},
@@ -303,3 +305,16 @@ def test_crash_mid_stream_ends_with_an_error_frame(
     events = _stream(client, "/api/conversations/c-crash/messages", {"text": "who is maya"})
     assert events[-1][0] == "error"
     assert events[-1][1]["code"] == "internal_error" and "detail" not in events[-1][1]
+
+
+def test_series_is_a_no_llm_read_over_the_seed_window(world: Any) -> None:
+    """The charts poll exact figures without a model call; the last day is today."""
+    client, _fake, llm, _ = world
+    body = client.get("/api/summary/series", headers=AUTH).json()
+    assert llm.calls == []
+    assert len(body["daily"]) == 22 and body["daily"][-1]["succeeded_total_cents"] == 9000
+    assert [h["hour"] for h in body["hourly_today"]] == list(range(24))
+    assert sum(h["succeeded_count"] for h in body["hourly_today"]) == 1
+    assert body["top_customers"] == [
+        {"customer_name": "Maya Chen", "succeeded_total_cents": 9000, "succeeded_count": 1}
+    ]

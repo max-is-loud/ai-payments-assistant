@@ -137,6 +137,7 @@ def run_turn(
                     yield AgentEvent("confirmation", {
                         "action_id": action_id, "action": spec.name,
                         "summary": proposal.summary, "parameters": args,
+                        "details": to_jsonable(proposal.details),
                     })
                     return
                 result: Any = proposal.resolved

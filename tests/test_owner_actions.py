@@ -9,10 +9,12 @@ from app.actions.context import OwnerContext
 from app.actions.owner_mutations import (
     ApproveEscalationParams,
     CreateInvoiceParams,
+    PaymentLinkParams,
     RefundParams,
     approve_escalation,
     describe_approve_escalation,
     describe_create_invoice,
+    describe_payment_link,
     describe_refund,
     refund_payment,
 )
@@ -24,6 +26,7 @@ from app.actions.owner_reads import (
 )
 from app.actions.owner_registry import build_owner_registry
 from app.agent.executor import ActionError
+from app.agent.schema import ProposalDetails
 from app.db import escalations
 from app.db.engine import session_scope
 from tests.fakes.stripe_fake import FakeStripeGateway
@@ -222,3 +225,64 @@ def test_owner_registry_matches_the_design() -> None:
         "summarize_day", "query_payments", "find_customer", "list_invoices", "create_invoice",
         "refund_payment", "create_payment_link", "list_escalations", "approve_escalation",
     ]
+
+
+def test_query_payments_with_a_range_includes_zero_filled_daily_totals(
+    engine: Engine, account: FakeStripeGateway
+) -> None:
+    """The web app draws a per-day chart from the observation; a quiet day still gets a bar."""
+    with session_scope(engine) as session:
+        ctx = OwnerContext(
+            gateway=account, session=session, now=NOW, notify=lambda *_: True
+        )
+        week = query_payments(
+            ctx, QueryPaymentsParams(start_date=date(2026, 8, 26), end_date=date(2026, 9, 1))
+        )
+        assert [(d["date"], d["succeeded_total_cents"]) for d in week["daily_totals"]] == [
+            ("2026-08-26", 5000), ("2026-08-27", 0), ("2026-08-28", 0), ("2026-08-29", 0),
+            ("2026-08-30", 0), ("2026-08-31", 0), ("2026-09-01", 9000),
+        ]
+        unbounded = query_payments(ctx, QueryPaymentsParams(customer_id="cus_maya"))
+        assert "daily_totals" not in unbounded
+
+
+def test_describe_carries_structured_details_for_the_confirmation_card(
+    engine: Engine, account: FakeStripeGateway
+) -> None:
+    """The card leads with the figure and the name, so they travel as fields, not only prose."""
+    with session_scope(engine) as session:
+        esc_id = escalations.file(
+            session, telegram_id=7, customer_id="cus_acme", customer_name="Acme Corp",
+            invoice_id="in_acme", amount_cents=240000, reason="ceiling",
+            now=NOW.replace(tzinfo=None),
+        ).id
+        ctx = OwnerContext(
+            gateway=account, session=session, now=NOW, notify=lambda *_: True
+        )
+        refund = describe_refund(ctx, RefundParams(payment_id="pi_maya"))
+        assert refund.details == ProposalDetails(
+            amount_cents=9000, counterparty="Maya Chen", meta="pi_maya · paid today at 14:00"
+        )
+        invoice = describe_create_invoice(
+            ctx,
+            CreateInvoiceParams(
+                customer_id="cus_acme", amount_cents=25000, description="Consulting",
+                due_date=date(2026, 9, 4),
+            ),
+        )
+        assert invoice.details == ProposalDetails(
+            amount_cents=25000, counterparty="Acme Corp", meta="Consulting · due Fri Sep 04"
+        )
+        link = describe_payment_link(
+            ctx, PaymentLinkParams(amount_cents=1500, description="Workshop")
+        )
+        assert link.details == ProposalDetails(
+            amount_cents=1500, counterparty=None, meta="Workshop"
+        )
+        escalation = describe_approve_escalation(
+            ctx, ApproveEscalationParams(escalation_id=esc_id)
+        )
+        assert escalation.details == ProposalDetails(
+            amount_cents=240000, counterparty="Acme Corp",
+            meta="Sends a Stripe payment link on Telegram",
+        )
