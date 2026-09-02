@@ -1,4 +1,4 @@
-.PHONY: install test lint seed dev
+.PHONY: install test lint seed dev timing
 
 install:
 	uv sync
@@ -16,3 +16,6 @@ test:
 
 lint:
 	uv run ruff check .
+
+timing:
+	uv run python -m scripts.time_reads
