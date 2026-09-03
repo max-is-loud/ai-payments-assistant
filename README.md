@@ -280,6 +280,18 @@ for both. The load-bearing claims each have a test behind them:
   baseline whatever order the planner ran them in; the confirmation card
   leads with the figure when details are present and falls back to the
   sentence when not.
+- Every object the seed creates, and every invoice and payment-link price
+  the assistant creates, names the account's own currency — a recording
+  client stands in for Stripe and pins each create payload — and an account
+  settling in a currency with no minor unit is refused before anything is
+  written.
+- A planner reply that will not parse is corrected with the required shape
+  and is never echoed back into the transcript as an assistant turn, so a
+  retry cannot reinforce the mistake it is correcting.
+- Every figure formats in the account's currency on both sides of the wire:
+  the Python formatter and its browser twin agree on `CA$1,200.00`, the
+  narrators are handed pre-formatted strings, and the planner prompt states
+  the account's symbol.
 
 `uv run pytest -m live_llm` runs the one test that calls a real model; it is
 deselected by default (`addopts = -m 'not live_llm'` in `pyproject.toml`) and

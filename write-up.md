@@ -328,6 +328,29 @@ rest of the app is built on.
   about the account the gateway fronts, and asking for it there meant no
   change to the thirteen tests that build those contexts by hand.
 
+- **The smoke test had to learn what the code learned.** The manual
+  walkthrough is a browser page rather than a test file: twelve stages in
+  the order a reviewer meets them, eighty-eight checks of one thing to do
+  and one thing to expect, each ticked or flagged, the flags copied back as
+  a report to work through. It was written against the first sandbox and it
+  aged in three ways this session exposed. It pinned dates — "Wednesday,
+  September 2", "due Fri Sep 11". It assumed dollars in every expectation.
+  And it carried the old account's stray history as part of the baseline.
+  The revision starts from an empty sandbox the way the reviewer's run will:
+  a new key, the local database moved aside because its Telegram bindings
+  and audit rows name customer ids that exist only in the old account, and
+  the browser's last-known numbers cleared once, since the page paints them
+  before it asks. It has one check for each thing fixed here — a short
+  follow-up question that must not spiral into three ERR lines, every
+  object in the Stripe dashboard in the account's own currency, `currency`
+  on the summary response — and it marks the two admitted limitations, the
+  UTC timestamp and the declined chart, as not-a-flag so a run does not
+  chase what this document already concedes. Because the reviewer's
+  currency is unknown, every figure a reader *sees* sits behind a
+  placeholder that a control at the top of the page swaps for the account's
+  symbol; what a reader *types* stays "$250", the brief's own wording, which
+  the planner reads in whatever currency the account settles in.
+
 ## Limitations / with more time
 
 - **Native tool calling was deliberately not used.** The propose-execute
