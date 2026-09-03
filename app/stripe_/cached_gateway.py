@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
+from app.domain.currency import Currency
 from app.domain.models import Customer, Invoice, Payment, Refund
 from app.stripe_.gateway import StripeGateway
 
@@ -87,6 +88,10 @@ class CachedGateway:
         with self._guard:
             for key in [key for key in self._entries if key[0] in kinds]:
                 del self._entries[key]
+
+    def default_currency(self) -> Currency:
+        """Pass-through; the inner gateway already keeps the answer for the process."""
+        return self._inner.default_currency()
 
     def list_payments(self) -> list[Payment]:
         """Every payment attempt, from the shared listing."""

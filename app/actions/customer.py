@@ -15,7 +15,7 @@ from app.agent.executor import ActionError
 from app.agent.schema import ActionSpec, NoParams, Proposal, Registry
 from app.db import escalations
 from app.domain.models import Invoice
-from app.domain.money import format_usd
+from app.domain.money import format_money
 from app.domain.policy import TELEGRAM_PAYMENT_CEILING_CENTS
 
 CEILING_MESSAGE = (
@@ -111,7 +111,8 @@ def describe_pay_invoice(ctx: CustomerContext, params: PayInvoiceParams) -> Prop
         return Proposal(resolved=escalated)
     summary = (
         f"Pay invoice {invoice.number or invoice.id} for "
-        f"{format_usd(invoice.amount_remaining_cents)} with your card on file"
+        f"{format_money(invoice.amount_remaining_cents, ctx.gateway.default_currency())} "
+        "with your card on file"
     )
     return Proposal(summary=summary)
 

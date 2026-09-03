@@ -1,7 +1,8 @@
 import type { DayTotals } from "../api/types";
 import { shortDate } from "../lib/dates";
-import { formatDollars, formatUsd } from "../lib/money";
+import { formatMoney, formatWhole } from "../lib/money";
 import { trendStats } from "../lib/series";
+import { useCurrency } from "../state/useCurrency";
 import { AreaChart } from "./charts/AreaChart";
 import { Axis } from "./charts/Bars";
 import { Eyebrow } from "./Eyebrow";
@@ -16,6 +17,7 @@ function axisLabels(days: DayTotals[]): string[] {
 // Three weeks of takings as an area, with the stats row the chart implies.
 // `daily` is null until the series arrives; the chart then draws its gridlines only.
 export function TrendSection({ daily }: { daily: DayTotals[] | null }) {
+  const currency = useCurrency();
   const days = daily ?? [];
   const values = days.map((d) => d.succeeded_total_cents);
   const stats = trendStats(days);
@@ -28,8 +30,8 @@ export function TrendSection({ daily }: { daily: DayTotals[] | null }) {
         <Eyebrow>Taken per day{first ? ` · ${shortDate(first)} – today` : ""}</Eyebrow>
         {daily && (
           <div className="ldg-stats">
-            <span>3-week total <strong>{formatUsd(stats.totalCents)}</strong></span>
-            <span>Weekday avg <strong>{formatDollars(stats.weekdayAvgCents)}</strong></span>
+            <span>3-week total <strong>{formatMoney(stats.totalCents, currency)}</strong></span>
+            <span>Weekday avg <strong>{formatWhole(stats.weekdayAvgCents, currency)}</strong></span>
             <span>
               Best day{" "}
               <strong className={bestIsToday ? "in" : ""}>
@@ -39,7 +41,7 @@ export function TrendSection({ daily }: { daily: DayTotals[] | null }) {
           </div>
         )}
       </div>
-      <AreaChart values={values} maxLabel={stats.totalCents ? formatUsd(Math.max(...values)) : undefined}>
+      <AreaChart values={values} maxLabel={stats.totalCents ? formatMoney(Math.max(...values), currency) : undefined}>
         {daily === null && <p className="ldg-empty">Loading three weeks of takings…</p>}
       </AreaChart>
       <Axis labels={axisLabels(days)} lastTone="in" />

@@ -14,6 +14,7 @@ from app.api.app import Services, create_app
 from app.db import escalations, pending_actions
 from app.db.clock import utcnow
 from app.db.engine import session_scope
+from app.domain.currency import resolve
 from app.llm.base import LLMError
 from app.settings import Settings
 from tests.fakes.llm_fake import ScriptedLLM
@@ -318,3 +319,13 @@ def test_series_is_a_no_llm_read_over_the_seed_window(world: Any) -> None:
     assert body["top_customers"] == [
         {"customer_name": "Maya Chen", "succeeded_total_cents": 9000, "succeeded_count": 1}
     ]
+
+
+def test_summary_tells_the_web_app_which_currency_the_figures_are_in(world: Any) -> None:
+    """The browser formats cents itself; without the code it would assume dollars."""
+    client, fake, _llm, _sent = world
+    body = client.get("/api/summary/today?narrate=false", headers=AUTH).json()
+    assert body["currency"] == "usd"
+    fake.currency = resolve("cad")
+    body = client.get("/api/summary/today?narrate=false", headers=AUTH).json()
+    assert body["currency"] == "cad"

@@ -89,7 +89,10 @@ def post_message(conversation_id: str, body: MessageIn, request: Request) -> Any
             conversations.append(session, conversation_id, "user", body.text)
             session.commit()
             ctx = _ctx(request, session)
-            system = web_planner_system(registry=OWNER_REGISTRY, today=ctx.now.date())
+            system = web_planner_system(
+                registry=OWNER_REGISTRY, today=ctx.now.date(),
+                currency=ctx.gateway.default_currency(),
+            )
             hooks = _hooks(session, conversation_id, body.text)
             try:
                 for event in run_turn(
@@ -153,7 +156,7 @@ def confirm(
             try:
                 text = narrate_result(
                     services.llm, action=execution.action, summary=execution.summary,
-                    result=execution.result,
+                    result=execution.result, currency=services.gateway.default_currency(),
                 )
             except LLMError:
                 text = f"Done: {execution.summary}."

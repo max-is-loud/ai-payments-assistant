@@ -37,23 +37,23 @@ describe("trendStats", () => {
 
 describe("hourlyView", () => {
   it("shows business hours with three axis labels and says when the day got busy", () => {
-    const view = hourlyView(withActivity([9, 250_00, 1], [15, 486_00, 3]));
+    const view = hourlyView(withActivity([9, 250_00, 1], [15, 486_00, 3]), "usd");
     expect(view.hours.map((h) => h.hour)).toEqual([8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
     expect(view.labels).toEqual(["8am", "1pm", "6pm"]);
     expect(view.note).toBe("Busiest at 3pm: $486.00 across 3 payments. Nothing before 9am.");
   });
 
   it("widens the axis when payments land outside business hours", () => {
-    const late = hourlyView(withActivity([20, 12_00, 1]));
+    const late = hourlyView(withActivity([20, 12_00, 1]), "usd");
     expect(late.hours[late.hours.length - 1].hour).toBe(20);
     expect(late.labels).toEqual(["8am", "2pm", "8pm"]);
-    const early = hourlyView(withActivity([6, 12_00, 1], [9, 5_00, 1]));
+    const early = hourlyView(withActivity([6, 12_00, 1], [9, 5_00, 1]), "usd");
     expect(early.hours[0].hour).toBe(6);
     expect(early.note).toBe("Busiest at 6am: $12.00 across 1 payment.");
   });
 
   it("says so when nothing has been taken yet", () => {
-    const view = hourlyView(quietDay());
+    const view = hourlyView(quietDay(), "usd");
     expect(view.hours.map((h) => h.hour)).toEqual([8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
     expect(view.note).toBe("Nothing taken yet today.");
   });

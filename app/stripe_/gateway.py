@@ -8,6 +8,7 @@ Actions and the agent loop are written against this Protocol; tests supply
 from datetime import date
 from typing import Protocol
 
+from app.domain.currency import Currency
 from app.domain.models import Customer, Invoice, Payment, Refund
 
 
@@ -35,6 +36,10 @@ class CardDeclined(StripeGatewayError):
 
 class StripeGateway(Protocol):
     """Everything the owner assistant may do to Stripe. Amounts are cents."""
+
+    def default_currency(self) -> Currency:
+        """The currency the account settles in; every amount here is cents of it."""
+        ...
 
     def list_payments(self) -> list[Payment]:
         """All payment attempts, newest first. Never filtered by `created`."""

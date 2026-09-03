@@ -11,10 +11,11 @@ displayable.
 from datetime import date
 
 from app.agent.schema import STEP_INSTRUCTION, Registry
+from app.domain.currency import Currency
 
 PERSONALITY = (
     "You are Ledger, the payments assistant for a small business. Voice: precise, calm, a "
-    "little dry. Speak in dollars like $1,200.00, never in cents. Never invent a number: every "
+    "little dry. Never invent a number: every "
     "figure you state must come from an observation you were given. Prefer one clear sentence "
     "to three hedged ones."
 )
@@ -61,27 +62,42 @@ PROTOCOL = (
 )
 
 
-def _planner_system(*, registry: Registry, today: date, channel: str) -> str:
+def _currency_note(currency: Currency) -> str:
+    """How amounts arrive and how to write them back.
+
+    Planners read raw observations, where every amount is an integer in
+    `*_cents`, and must render the figure themselves. The account decides the
+    symbol; a US reviewer and a Canadian one see the same 120000 and must not
+    both be told it is "$1,200.00".
+    """
+    return (
+        f"Amounts in observations are integer cents of {currency.label}. State them as "
+        f"{currency.symbol}1,200.00, never in cents."
+    )
+
+
+def _planner_system(*, registry: Registry, today: date, channel: str, currency: Currency) -> str:
     """Personality, today's date, protocol, action catalog, then the channel's own rules."""
     return "\n\n".join([
         PERSONALITY,
         f"Today is {today.strftime('%A')}, {today.isoformat()}. Resolve relative dates against it.",
+        _currency_note(currency),
         PROTOCOL,
         "Available actions:\n" + registry.prompt_catalog(),
         channel,
     ])
 
 
-def web_planner_system(*, registry: Registry, today: date) -> str:
+def web_planner_system(*, registry: Registry, today: date, currency: Currency) -> str:
     """The owner's planner prompt for the web app: owner scope plus Markdown formatting."""
     channel = "\n\n".join([OWNER_NOTES, WEB_FORMATTING])
-    return _planner_system(registry=registry, today=today, channel=channel)
+    return _planner_system(registry=registry, today=today, channel=channel, currency=currency)
 
 
-def telegram_planner_system(*, registry: Registry, today: date) -> str:
+def telegram_planner_system(*, registry: Registry, today: date, currency: Currency) -> str:
     """The customer's planner prompt for the bot: customer scope plus Telegram HTML formatting."""
     channel = "\n\n".join([CUSTOMER_NOTES, TELEGRAM_FORMATTING])
-    return _planner_system(registry=registry, today=today, channel=channel)
+    return _planner_system(registry=registry, today=today, channel=channel, currency=currency)
 
 
 def summary_system() -> str:
@@ -95,7 +111,7 @@ def summary_system() -> str:
         "sentences, human, not a list. Compare today with yesterday in words (well ahead, "
         "behind, about level). Mention declines and their reason if any, and the largest "
         "unpaid invoice by customer name. If there is no activity yet, say so plainly. "
-        "Amounts arrive already formatted, as *_usd strings; copy them exactly. The weekday "
+        "Amounts arrive already formatted, as *_formatted strings; copy them exactly. The weekday "
         "and date arrive as today_is; use them and never guess the day.",
         WEB_FORMATTING,
     ])
@@ -107,6 +123,6 @@ def result_system() -> str:
         PERSONALITY,
         "An action the user approved has just executed. In one or two sentences, confirm what "
         "happened using only the JSON you are given. Include a URL if the result has one. "
-        "Amounts arrive already formatted, as *_usd strings; copy them exactly.",
+        "Amounts arrive already formatted, as *_formatted strings; copy them exactly.",
         WEB_FORMATTING,
     ])

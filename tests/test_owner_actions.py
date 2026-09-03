@@ -31,6 +31,7 @@ from app.agent.executor import ActionError
 from app.agent.schema import ProposalDetails
 from app.db import escalations
 from app.db.engine import session_scope
+from app.domain.currency import resolve
 from tests.fakes.stripe_fake import FakeStripeGateway
 
 NOW = datetime(2026, 9, 1, 15, 0, tzinfo=UTC)
@@ -349,3 +350,14 @@ def test_compare_periods_rejects_a_reversed_range() -> None:
             first_start_date=date(2026, 8, 25), first_end_date=date(2026, 8, 19),
             second_start_date=date(2026, 8, 26), second_end_date=date(2026, 9, 1),
         )
+
+
+def test_confirmation_summaries_carry_the_account_currency(
+    engine: Engine, account: FakeStripeGateway
+) -> None:
+    """A Canadian account's confirmation card must not present its figures as US dollars."""
+    account.currency = resolve("cad")
+    with session_scope(engine) as session:
+        ctx = OwnerContext(gateway=account, session=session, now=NOW, notify=lambda *_: True)
+        proposal = describe_refund(ctx, RefundParams(payment_id="pi_maya", amount_cents=4500))
+        assert proposal.summary == "Refund CA$45.00 to Maya Chen — CA$90.00 payment from Sep 01"

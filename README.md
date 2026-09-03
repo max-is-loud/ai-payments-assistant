@@ -198,9 +198,15 @@ measurement against a running API; the before-and-after is in the write-up.
    more day of activity to existing seeded customers, useful if you come
    back the next morning. Seeded history carries `metadata.demo_created_at`
    because Stripe assigns `created` and cannot be told otherwise; exactly
-   one function (`app.domain.mapping`) reads that field, and every create
-   call explicitly requests `"currency": "usd"` because a fresh sandbox's
-   account-level default currency is not guaranteed to be USD.
+   one function (`app.domain.mapping`) reads that field. Before creating
+   anything, the seed reads the account's `default_currency` and names it
+   on every payment intent, invoice, and invoice item: a fresh sandbox
+   defaults to its country's currency, a customer is locked to a currency by
+   its first invoice, and neither invoices nor charges can be deleted, so a
+   guessed currency would leave permanent wreckage. The app formats every
+   figure in that same currency. Accounts settling in a currency with no
+   minor unit (JPY, KRW) are refused with a message before anything is
+   written.
 
 5. **Run everything.** `make dev` starts the API on `:8000`, the web app on
    `:5173`, and the Telegram bot (long polling, no tunnel needed) together;

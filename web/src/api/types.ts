@@ -49,6 +49,8 @@ export interface DailyFacts {
 export interface SummaryResponse {
   facts: DailyFacts;
   text: string | null;
+  // Lowercase ISO 4217; every *_cents figure on this page is cents of it.
+  currency: string;
 }
 
 export interface Escalation {

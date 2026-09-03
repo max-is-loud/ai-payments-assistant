@@ -5,6 +5,7 @@ import { Rail } from "./components/rail/Rail";
 import { Thread } from "./components/Thread";
 import { TrendSection } from "./components/TrendSection";
 import { useConversation } from "./state/useConversation";
+import { CurrencyProvider } from "./state/useCurrency";
 import { useDashboard } from "./state/useDashboard";
 import { useTheme } from "./state/useTheme";
 
@@ -14,7 +15,7 @@ export default function App() {
   const dashboard = useDashboard(onMutation);
   const [theme, toggleTheme] = useTheme();
   return (
-    <>
+    <CurrencyProvider value={dashboard.currency}>
       <MastheadBand syncedAt={dashboard.syncedAt} theme={theme} onToggleTheme={toggleTheme} />
       <div className="ldg-page">
         <Hero
@@ -40,6 +41,6 @@ export default function App() {
           />
         </main>
       </div>
-    </>
+    </CurrencyProvider>
   );
 }

@@ -124,7 +124,10 @@ def customer_turn(deps: BotDeps, binding: TelegramBinding, text: str) -> list[Ag
         conversations.append(session, conversation_id, "user", text)
         session.commit()
         ctx = _ctx(deps, session, binding)
-        system = telegram_planner_system(registry=CUSTOMER_REGISTRY, today=ctx.now.date())
+        system = telegram_planner_system(
+            registry=CUSTOMER_REGISTRY, today=ctx.now.date(),
+            currency=ctx.gateway.default_currency(),
+        )
         try:
             events = list(run_turn(
                 llm=deps.llm, registry=CUSTOMER_REGISTRY, ctx=ctx, system=system,

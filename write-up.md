@@ -43,7 +43,10 @@ rest of the app is built on.
 ## Assumptions
 
 - **Single owner, single currency.** The design targets one business owner
-  and USD throughout; there is no multi-tenant or multi-currency handling.
+  and one currency throughout — whichever the Stripe account settles in,
+  read from the account rather than assumed. There is no multi-tenant or
+  multi-currency handling, and accounts in a currency with no minor unit
+  (JPY, KRW) are refused up front.
 - **Demo-scale data.** Listing and filtering over Stripe's pagination in
   Python is fine at the roughly 150-object scale a seeded sandbox produces;
   it would not be at production volume.
@@ -97,9 +100,10 @@ rest of the app is built on.
   can default to a currency other than USD; `invoice_items.create` requested
   `"currency": "usd"` explicitly while `invoices.create` did not, and Stripe
   rejected the mismatch the first time an invoice was created against an
-  account whose default was CAD. Every create call across the gateway now
-  passes `"currency": "usd"` explicitly rather than trusting the account
-  default.
+  account whose default was CAD. The fix at the time was to pass
+  `"currency": "usd"` explicitly on every create call. That held until a
+  genuinely Canadian sandbox showed it was the wrong fix — see the two
+  entries near the end of this section.
 - **A re-approvable-confirmation bug, caught in review.** The original
   `execute_pending` marked a failed confirmation as `failed` but did not
   commit that write before re-raising in two of its three failure paths; if
@@ -204,8 +208,8 @@ rest of the app is built on.
   when a restored proposal has none. The hero also exposed the summary
   narrator: with the Python figure of $2,578.00 sitting beside its prose, the
   model's "$257,800.00" — cents read as dollars — was suddenly impossible to
-  miss. Both narrators now receive every amount pre-formatted as a dollar
-  string, so the prose can only copy a figure, never convert one.
+  miss. Both narrators now receive every amount pre-formatted in the
+  account's currency, so the prose can only copy a figure, never convert one.
 - **A design handoff as a spec.** The visual redesign was produced in Claude
   Design as a handoff bundle — tokens, component classes, reference React
   components, and a full-page kit — and treated as the spec: the bundle is
@@ -301,6 +305,29 @@ rest of the app is built on.
   integer number of cents and there is no honest way to express one of those in
   a currency that has none.
 
+- **Then the rest of the app had to follow.** Reading the account fixed the
+  seed and left the same hole open in the gateway the chat box uses: the
+  invoice item behind "Create a $250 invoice for Acme" and the price behind
+  every payment link still said `"usd"`, so the assistant could raise the
+  exact error the seed had just stopped raising — or, for a payment link, not
+  fail at all and quietly charge the wrong money. The gateway now resolves the
+  account's currency once per process and keeps it, and every place money
+  becomes text asks the gateway rather than assuming: the confirmation
+  summaries, both narrators, and the planner prompt — which matters more than
+  it looks, because the planner reads raw `*_cents` integers and renders the
+  figure itself, so an untold planner writes "$1,200.00" on a Canadian account
+  no matter what the page shows. The web app learns the currency from one
+  field on the summary response and holds it in a context, so the charts do
+  not carry it as a prop; `Intl.NumberFormat` renders it there and a small
+  table mirrors the same symbols in Python, so `CA$1,200.00` reads identically
+  in a narrated sentence and beside a bar. Two decisions were deliberate. The
+  $2,000 Telegram ceiling is 200,000 cents of *the account's* currency — the
+  brief writes "$2,000" and nothing more, and a fixed number of minor units
+  keeps it an invariant with no exchange rate in it. And the currency lives on
+  the gateway rather than as a new field on the action contexts: it is a fact
+  about the account the gateway fronts, and asking for it there meant no
+  change to the thirteen tests that build those contexts by hand.
+
 ## Limitations / with more time
 
 - **Native tool calling was deliberately not used.** The propose-execute
@@ -351,13 +378,6 @@ rest of the app is built on.
   different zone from the charts beside it. Formatting it like every other date
   is a small change that arrived too late to make.
 
-- **The app still formats every figure as dollars.** The seed writes in the
-  account's currency now, but the domain records do not carry one and both
-  formatters — `app/domain/money.py` and its browser twin — print a `$`. On a
-  CAD account the objects in Stripe are right and the labels on screen are
-  wrong, which is a quieter version of the same fault. Carrying the currency
-  through the domain records, the two formatters, and the Telegram ceiling is
-  the other half of that change.
 
 ## Bonus: the escalation loop
 

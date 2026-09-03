@@ -15,8 +15,13 @@ from app.actions.owner_reads import _invoice_row
 from app.agent.executor import ActionError
 from app.agent.schema import Proposal, ProposalDetails
 from app.db import escalations
-from app.domain.money import format_usd
+from app.domain.money import format_money
 from app.services.escalations import EscalationNotFound, approve_and_notify
+
+
+def _money(ctx: OwnerContext, cents: int) -> str:
+    """Cents as a figure in the account's currency, for a confirmation summary."""
+    return format_money(cents, ctx.gateway.default_currency())
 
 
 def _key(ctx: OwnerContext) -> str:
@@ -57,7 +62,7 @@ def describe_refund(ctx: OwnerContext, params: RefundParams) -> Proposal:
     amount = payment.refundable_cents if params.amount_cents is None else params.amount_cents
     if amount > payment.refundable_cents:
         raise ActionError(
-            f"Only {format_usd(payment.refundable_cents)} is refundable on {params.payment_id}."
+            f"Only {_money(ctx, payment.refundable_cents)} is refundable on {params.payment_id}."
         )
     who = payment.customer_name or "the customer"
     meta = " · ".join(
@@ -66,7 +71,7 @@ def describe_refund(ctx: OwnerContext, params: RefundParams) -> Proposal:
     )
     return Proposal(
         summary=(
-            f"Refund {format_usd(amount)} to {who} — {format_usd(payment.amount_cents)} payment "
+            f"Refund {_money(ctx, amount)} to {who} — {_money(ctx, payment.amount_cents)} payment "
             f"from {payment.occurred_at:%b %d}"
         ),
         details=ProposalDetails(amount_cents=amount, counterparty=payment.customer_name, meta=meta),
@@ -123,7 +128,7 @@ def describe_create_invoice(ctx: OwnerContext, params: CreateInvoiceParams) -> P
     customer = ctx.gateway.get_customer(params.customer_id)
     return Proposal(
         summary=(
-            f"Create a {format_usd(params.amount_cents)} invoice for {customer.name} due "
+            f"Create a {_money(ctx, params.amount_cents)} invoice for {customer.name} due "
             f"{params.due_date:%a %b %d, %Y} — {params.description}"
         ),
         details=ProposalDetails(
@@ -157,18 +162,18 @@ class PaymentLinkParams(BaseModel):
     description: str = Field(..., min_length=1, description="What is being paid for")
 
 
-def describe_payment_link(_ctx: OwnerContext, params: PaymentLinkParams) -> Proposal:
+def describe_payment_link(ctx: OwnerContext, params: PaymentLinkParams) -> Proposal:
     """Nothing to resolve; state the amount and purpose.
 
     Args:
-        _ctx: Owner context (unused).
+        ctx: Owner context, for the account's currency.
         params: Amount and description.
 
     Returns:
         A proposal describing the payment link; there is no counterparty yet.
     """
     summary = (
-        f"Create a payment link for {format_usd(params.amount_cents)} — "
+        f"Create a payment link for {_money(ctx, params.amount_cents)} — "
         f"{params.description}"
     )
     return Proposal(
@@ -219,7 +224,7 @@ def describe_approve_escalation(ctx: OwnerContext, params: ApproveEscalationPara
         raise ActionError(f"No pending escalation {params.escalation_id}.")
     summary = (
         f"Approve {row.customer_name}'s request to pay "
-        f"{format_usd(row.amount_cents)} and send them the payment link on Telegram"
+        f"{_money(ctx, row.amount_cents)} and send them the payment link on Telegram"
     )
     return Proposal(
         summary=summary,

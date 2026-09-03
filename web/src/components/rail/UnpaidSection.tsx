@@ -1,11 +1,13 @@
 import type { DailyFacts } from "../../api/types";
 import { shortDate } from "../../lib/dates";
-import { formatUsd } from "../../lib/money";
+import { formatMoney } from "../../lib/money";
+import { useCurrency } from "../../state/useCurrency";
 import { RailSection } from "./RailSection";
 
 // Open invoices, largest first, from the same facts the hero uses.
 export function UnpaidSection({ facts }: { facts: DailyFacts | null }) {
-  const title = facts ? <>Unpaid · {formatUsd(facts.open_invoice_total_cents)}</> : "Unpaid";
+  const currency = useCurrency();
+  const title = facts ? <>Unpaid · {formatMoney(facts.open_invoice_total_cents, currency)}</> : "Unpaid";
   return (
     <RailSection title={title}>
       {!facts ? (
@@ -25,7 +27,7 @@ export function UnpaidSection({ facts }: { facts: DailyFacts | null }) {
                   </span>
                 )}
               </span>
-              <span className="ldg-mono">{formatUsd(invoice.amount_remaining_cents)}</span>
+              <span className="ldg-mono">{formatMoney(invoice.amount_remaining_cents, currency)}</span>
             </div>
           ))}
         </div>

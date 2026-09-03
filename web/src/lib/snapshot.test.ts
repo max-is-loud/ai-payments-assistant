@@ -23,13 +23,20 @@ const facts = {
 
 const series = { daily: [], hourly_today: [], top_customers: [] } as SeriesResponse;
 
-const snapshot: Snapshot = { day: "2026-09-02", savedAt: 1_700_000_000_000, facts, series };
+// A non-dollar currency, so the round-trip proves the field is stored rather than defaulted.
+const snapshot: Snapshot = { day: "2026-09-02", savedAt: 1_700_000_000_000, facts, currency: "cad", series };
 
 describe("snapshot", () => {
   it("round-trips the numbers saved earlier the same day", () => {
     const storage = new MemoryStorage();
     saveSnapshot(storage, snapshot);
     expect(loadSnapshot(storage, "2026-09-02")).toEqual(snapshot);
+  });
+
+  it("reads a snapshot saved before currency existed as a dollar account", () => {
+    const storage = new MemoryStorage();
+    storage.setItem("ledger.dashboard", JSON.stringify({ day: "2026-09-02", savedAt: 1, facts, series }));
+    expect(loadSnapshot(storage, "2026-09-02")?.currency).toBe("usd");
   });
 
   it("refuses a snapshot from another day, so yesterday's figure never poses as today's", () => {

@@ -23,8 +23,9 @@ def today(request: Request, narrate: bool = True) -> dict[str, Any]:
         services.gateway.list_payments(), services.gateway.list_invoices(status="open"),
         datetime.now(local_timezone()),
     )
-    text = narrate_summary(services.llm, facts) if narrate else None
-    return {"facts": to_jsonable(facts), "text": text}
+    currency = services.gateway.default_currency()
+    text = narrate_summary(services.llm, facts, currency) if narrate else None
+    return {"facts": to_jsonable(facts), "text": text, "currency": currency.code}
 
 
 @router.get("/series")

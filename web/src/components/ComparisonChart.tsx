@@ -1,6 +1,7 @@
 import type { ComparedPeriod, Comparison } from "../lib/comparison";
 import { addDays, dateRangeLabel, weekdayInitial } from "../lib/dates";
-import { formatUsd } from "../lib/money";
+import { formatMoney } from "../lib/money";
+import { useCurrency } from "../state/useCurrency";
 import { Axis, Bars } from "./charts/Bars";
 import { Eyebrow } from "./Eyebrow";
 import { Figure } from "./Figure";
@@ -10,6 +11,7 @@ function weekdays(period: ComparedPeriod): string {
 }
 
 function Period({ period, tone, max }: { period: ComparedPeriod; tone: "" | "in"; max: number }) {
+  const currency = useCurrency();
   return (
     <div>
       <Eyebrow tone={tone}>{dateRangeLabel(period.start, period.end)}</Eyebrow>
@@ -17,7 +19,7 @@ function Period({ period, tone, max }: { period: ComparedPeriod; tone: "" | "in"
         <Figure cents={period.totalCents} size="md" tone={tone} />
         <span className="count">· {period.count}</span>
       </div>
-      <Bars values={period.daily} max={max} size="sm" tone={tone} titles={period.daily.map(formatUsd)} />
+      <Bars values={period.daily} max={max} size="sm" tone={tone} titles={period.daily.map((c) => formatMoney(c, currency))} />
     </div>
   );
 }

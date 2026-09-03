@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from datetime import date as date_type
 from typing import Any
 
+from app.domain.currency import USD, Currency
 from app.domain.models import Customer, Invoice, Payment, Refund
 from app.stripe_.gateway import NotFound
 
@@ -23,6 +24,12 @@ class FakeStripeGateway:
         self.bind_tokens: dict[str, str] = {}
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self._counter = 0
+        # Set to another Currency to stage a non-dollar account.
+        self.currency = USD
+
+    def default_currency(self) -> Currency:
+        """The staged account currency; dollars unless a test says otherwise."""
+        return self.currency
 
     def _next(self, prefix: str) -> str:
         """Generate a predictable id like `re_1`."""

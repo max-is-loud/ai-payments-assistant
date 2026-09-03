@@ -5,6 +5,7 @@ passes that id to Stripe or verifies ownership before acting. No public
 method accepts a customer id — see `tests/test_scoped_gateway.py`.
 """
 
+from app.domain.currency import Currency
 from app.domain.models import Customer, Invoice
 from app.stripe_.gateway import NotFound, StripeGateway, StripeGatewayError
 
@@ -25,6 +26,10 @@ class CustomerScopedGateway:
     def customer_id(self) -> str:
         """The bound customer id (read-only)."""
         return self._customer_id
+
+    def default_currency(self) -> Currency:
+        """The account's currency; a customer's invoices are always in it."""
+        return self._owner.default_currency()
 
     def my_customer(self) -> Customer:
         """The bound customer's record."""

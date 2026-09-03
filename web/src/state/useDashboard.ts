@@ -30,6 +30,7 @@ export function useDashboard(onMutation: (cb: () => void) => () => void) {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [facts, setFacts] = useState<DailyFacts | null>(snapshot?.facts ?? null);
+  const [currency, setCurrency] = useState<string>(snapshot?.currency ?? "usd");
   const [series, setSeries] = useState<SeriesResponse | null>(snapshot?.series ?? null);
   const [escalations, setEscalations] = useState<Escalation[]>([]);
   const [escalationState, setEscalationState] = useState<Record<string, EscalationState>>({});
@@ -41,7 +42,8 @@ export function useDashboard(onMutation: (cb: () => void) => () => void) {
   const refresh = useCallback((withEscalations = true) => {
     const facts$ = apiFetch<SummaryResponse>("/api/summary/today?narrate=false").then((s) => {
       setFacts(s.facts);
-      return s.facts;
+      setCurrency(s.currency);
+      return s;
     });
     const series$ = apiFetch<SeriesResponse>("/api/summary/series").then((s) => {
       setSeries(s);
@@ -51,12 +53,15 @@ export function useDashboard(onMutation: (cb: () => void) => () => void) {
       ? apiFetch<Escalation[]>("/api/escalations").then(setEscalations)
       : Promise.resolve();
     Promise.all([facts$, series$, escalations$])
-      .then(([freshFacts, freshSeries]) => {
+      .then(([fresh, freshSeries]) => {
         const now = new Date();
         setSyncedAt(now);
         const storage = browserStorage();
         if (storage) {
-          saveSnapshot(storage, { day: todayIso(now), savedAt: now.getTime(), facts: freshFacts, series: freshSeries });
+          saveSnapshot(storage, {
+            day: todayIso(now), savedAt: now.getTime(),
+            facts: fresh.facts, currency: fresh.currency, series: freshSeries,
+          });
         }
       })
       .catch(() => undefined);
@@ -72,6 +77,7 @@ export function useDashboard(onMutation: (cb: () => void) => () => void) {
         if (cancelled) return;
         setSummary(s);
         setFacts(s.facts);
+        setCurrency(s.currency);
       })
       .catch((e) => {
         if (!cancelled) setSummaryError(describeError(e));
@@ -99,5 +105,8 @@ export function useDashboard(onMutation: (cb: () => void) => () => void) {
     }
   }, [refresh]);
 
-  return { summary, summaryError, facts, series, escalations, escalationState, railError, syncedAt, approveEscalation };
+  return {
+    summary, summaryError, facts, currency, series, escalations, escalationState, railError, syncedAt,
+    approveEscalation,
+  };
 }
