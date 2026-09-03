@@ -379,6 +379,15 @@ rest of the app is built on.
   is a small change that arrived too late to make.
 
 
+- **Totals trust the account to be single-currency.** Every write names the
+  account's currency, so an account seeded by this project cannot hold two.
+  But the domain records do not carry a currency and the totals do not check
+  one, so an account contaminated before the fix — the sandbox this was found
+  in still holds one CAD payment intent among 161 USD — sums the stray cents
+  as if they were the account's own. Carrying `currency` on `Payment` and
+  `Invoice` and filtering the totals to the account's is the small remaining
+  piece; it defends only against data the seed can no longer produce.
+
 ## Bonus: the escalation loop
 
 A payment at or above $2,000 does not just fail on the Telegram side — it
