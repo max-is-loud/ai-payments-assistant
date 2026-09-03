@@ -1,5 +1,45 @@
 # Write-up
 
+## Scope
+
+This went past the brief's 3–5 hours, and it is worth saying so plainly rather
+than making you infer it from the commit count.
+
+I know what the 3–5 hour version looks like, because it is the first third of
+this one: the propose-execute loop, the owner action registry, the seed
+script, a chat box with an input and a response area, and the Telegram bot
+with the $2,000 ceiling enforced in Python. Every requirement in the brief is
+met by that version. Nothing after it was necessary.
+
+What the extra time bought was the part a brief cannot ask for directly. The
+owner app reads like an instrument rather than a chat box; the charts are
+drawn from Python-computed series, so no figure on the page has passed through
+a model; a shared cache turns an eight-second cold load into an instant one;
+and the escalation loop makes the two deliverables one product instead of two.
+The design system and the documentation vault are checked in as tooling rather
+than as assignment code — they exist so the visual language and the reasoning
+behind it are reproducible rather than merely described.
+
+Where I did hold the line is the assistant itself. The owner registry opened
+at nine actions and stands at ten; the single addition, `compare_periods`,
+exists to take arithmetic away from the model rather than to give it a new
+power. Growth went into how faithfully the interface renders what the
+assistant already knew, never into widening what it may do.
+
+The clearest example of that line is a thing the app cannot do. Ask it for
+"payments per customer as a bar chart" and it will tell you it cannot draw
+one, and offer a table instead. The fix is small and obvious — an aggregating
+parameter on `query_payments`, and a chart the interface draws from the result
+the way it already draws period comparisons — and I left it unbuilt on
+purpose. Every chart on the page today is read from a Python-computed series
+under an interface-only `display` key the planner never sees. Opening a
+model-facing path to charts means owning a contract: which result shapes are
+chartable, what the interface does when the model asks for a chart over data
+that will not support one, and how it declines without the model narrating a
+picture that is not there. That contract is worth more care than the feature
+is worth, and a partial version of it would have undermined the invariant the
+rest of the app is built on.
+
 ## Assumptions
 
 - **Single owner, single currency.** The design targets one business owner
