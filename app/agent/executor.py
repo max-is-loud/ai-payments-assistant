@@ -26,12 +26,18 @@ def validate_params(model: type[BaseModel], parameters: Mapping[str, Any]) -> Ba
     default (`limit: int = 20`) would otherwise fail as "should be a valid
     integer" and cost a planning round-trip. Dropping the nulls before
     validation lets the model's default apply and leaves genuinely required
-    fields to fail as missing.
+    fields to fail as missing. Only known fields are dropped: a `null` under a
+    name the model does not have is still an unknown key, and the model's
+    `extra="forbid"` must see it.
 
     Raises:
-        ValidationError: The remaining parameters do not fit the model.
+        ValidationError: The remaining parameters do not fit the model, or
+            carry a key the model does not declare.
     """
-    return model.model_validate({k: v for k, v in parameters.items() if v is not None})
+    known = model.model_fields
+    return model.model_validate(
+        {k: v for k, v in parameters.items() if v is not None or k not in known}
+    )
 
 
 def parse_call(raw: Mapping[str, Any]) -> ActionCall:

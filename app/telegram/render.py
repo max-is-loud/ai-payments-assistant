@@ -1,9 +1,12 @@
 """Turn agent events into a Telegram reply.
 
 Deterministic on purpose: the planner writes the sentence, but which
-buttons appear and what a receipt says is decided here, in Python. Reply
-text is Telegram HTML in the `app.telegram.formatting` dialect; the send
-path escapes and validates it.
+buttons appear, what a receipt says, and every figure the customer reads
+are decided here, in Python. Amounts come from the observation's
+interface-only `display` data, which the planner is never shown, and land
+on the buttons and in one total line the server writes. Reply text is
+Telegram HTML in the `app.telegram.formatting` dialect; the send path
+escapes and validates it.
 """
 
 from dataclasses import dataclass, field
@@ -12,6 +15,9 @@ from typing import Any
 from telegram import InlineKeyboardButton
 
 from app.agent.events import AgentEvent
+from app.agent.schema import DISPLAY_KEY
+
+INVOICE_ACTIONS = ("my_balance", "my_invoices")
 
 ERROR_TEXT = "Something went wrong on my side. Please try again in a moment."
 NOT_CONNECTED_TEXT = (
@@ -27,27 +33,57 @@ class Reply:
     buttons: list[list[InlineKeyboardButton]] = field(default_factory=list)
 
 
+def _invoice_observations(events: list[AgentEvent]) -> list[dict[str, Any]]:
+    """The results of this turn's invoice reads, in order."""
+    return [
+        event.data["result"] for event in events
+        if event.type == "observation" and event.data.get("name") in INVOICE_ACTIONS
+    ]
+
+
 def _invoice_rows(events: list[AgentEvent]) -> list[list[InlineKeyboardButton]]:
-    """View/Pay buttons for every open invoice seen in this turn's observations."""
+    """One button row per open invoice seen in this turn, with its amount on the button.
+
+    Below the ceiling: View (the hosted page) and Pay. At or above it: a
+    single button that names the amount and says the owner must approve;
+    tapping it files or reuses the escalation. The URL is never present for
+    those, because the row carries none.
+    """
     rows: list[list[InlineKeyboardButton]] = []
     seen: set[str] = set()
-    for event in events:
-        observed_names = ("my_balance", "my_invoices")
-        if event.type != "observation" or event.data.get("name") not in observed_names:
-            continue
-        for invoice in event.data["result"].get("invoices", []):
-            if invoice["status"] != "open" or invoice["invoice_id"] in seen:
+    for result in _invoice_observations(events):
+        amounts = (result.get(DISPLAY_KEY) or {}).get("invoice_amounts") or {}
+        for invoice in result.get("invoices", []):
+            invoice_id = invoice["invoice_id"]
+            if invoice["status"] != "open" or invoice_id in seen:
                 continue
-            seen.add(invoice["invoice_id"])
-            label = invoice.get("number") or invoice["invoice_id"]
+            seen.add(invoice_id)
+            label = invoice.get("number") or invoice_id
+            amount = amounts.get(invoice_id)
+            figure = f" · {amount}" if amount else ""
+            pay = f"pay:{invoice_id}"
+            if invoice.get("requires_owner_approval"):
+                text = f"{label}{figure} · needs the owner's approval"
+                rows.append([InlineKeyboardButton(text, callback_data=pay)])
+                continue
             row: list[InlineKeyboardButton] = []
             if invoice.get("view_url"):
                 row.append(InlineKeyboardButton(f"View {label}", url=invoice["view_url"]))
-            row.append(
-                InlineKeyboardButton(f"Pay {label}", callback_data=f"pay:{invoice['invoice_id']}")
-            )
+            row.append(InlineKeyboardButton(f"Pay {label}{figure}", callback_data=pay))
             rows.append(row)
     return rows
+
+
+def _owed_line(events: list[AgentEvent]) -> str | None:
+    """"You owe X across N invoices", from the latest balance read that carried a total."""
+    for result in reversed(_invoice_observations(events)):
+        total = (result.get(DISPLAY_KEY) or {}).get("owed_total")
+        count = result.get("unpaid_count")
+        if total is None or count is None:
+            continue
+        noun = "invoice" if count == 1 else "invoices"
+        return f"You owe <b>{total}</b> across {count} {noun}."
+    return None
 
 
 def reply_for(events: list[AgentEvent]) -> Reply:
@@ -59,7 +95,9 @@ def reply_for(events: list[AgentEvent]) -> Reply:
                InlineKeyboardButton("Cancel", callback_data=f"cancel:{action_id}")]
         return Reply(f"{last.data['summary']}?", [row])
     if last.type == "answer":
-        return Reply(last.data["text"], _invoice_rows(events))
+        owed = _owed_line(events)
+        text = f"{last.data['text']}\n\n{owed}" if owed else last.data["text"]
+        return Reply(text, _invoice_rows(events))
     if last.type == "clarify":
         return Reply(last.data["question"])
     return Reply(ERROR_TEXT)

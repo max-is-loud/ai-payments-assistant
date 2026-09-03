@@ -1,6 +1,7 @@
 """HTTP contract: auth with a hint, typed SSE events, stored-action confirmation, resources."""
 
 import json
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -11,7 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
 from app.api.app import Services, create_app
-from app.db import escalations, pending_actions
+from app.db import conversations, escalations, pending_actions
 from app.db.clock import utcnow
 from app.db.engine import session_scope
 from app.domain.currency import resolve
@@ -46,14 +47,16 @@ def _events(response: Any) -> list[tuple[str, dict[str, Any]]]:
 
 @contextmanager
 def _world(
-    engine: Engine, *, debug: bool = False, raise_server_exceptions: bool = True
+    engine: Engine, *, debug: bool = False, raise_server_exceptions: bool = True,
+    fake: FakeStripeGateway | None = None,
 ) -> Iterator[World]:
     """A test app over fakes: Maya paid $90 today; the LLM script is filled per test.
 
     `raise_server_exceptions=False` lets a test read the 500 envelope the
     catch-all handler writes, instead of TestClient re-raising the cause.
+    A prepared `fake` lets a test stage Stripe state from before the process started.
     """
-    fake = FakeStripeGateway()
+    fake = fake or FakeStripeGateway()
     fake.add_customer("cus_maya", "Maya Chen")
     fake.add_customer("cus_acme", "Acme Corp")
     fake.add_payment("pi_1", "cus_maya", 9000, occurred_at=NOW - timedelta(minutes=5))
@@ -144,8 +147,15 @@ def test_message_stream_frames_are_separated_by_a_blank_line(world: Any) -> None
     assert b"\r\n" not in raw
 
 
-def test_confirmation_executes_the_stored_action_once_with_the_header_key(world: Any) -> None:
-    """Approve runs exactly the proposal; the header becomes Stripe's key; repeats 409."""
+def test_confirmation_executes_the_stored_action_once_with_a_key_the_client_cannot_set(
+    world: Any, engine: Engine
+) -> None:
+    """Approve runs exactly the proposal under a server-minted key; repeats 409.
+
+    A client header used to become Stripe's idempotency key, which let two
+    requests for one action carry two keys. The key is now minted when the
+    action is claimed and stored on it; a header is ignored.
+    """
     client, fake, llm, _ = world
     llm._responses.extend(
         [_step("refund_payment", payment_id="pi_1", amount_cents=4500), "Refunded $45.00."]
@@ -166,8 +176,11 @@ def test_confirmation_executes_the_stored_action_once_with_the_header_key(world:
         confirmed = _events(r)
     assert [e for e, _ in confirmed] == ["action", "observation", "answer"]
     assert confirmed[-1][1]["text"] == "Refunded $45.00."
+    with session_scope(engine) as session:
+        stored_key = pending_actions.get(session, action_id).idempotency_key  # type: ignore[union-attr]
+    assert stored_key and stored_key != "idem-1"
     assert [c for c in fake.calls if c[0] == "refund"] == [
-        ("refund", {"payment_id": "pi_1", "amount_cents": 4500, "idempotency_key": "idem-1"})
+        ("refund", {"payment_id": "pi_1", "amount_cents": 4500, "idempotency_key": stored_key})
     ]
     again = client.post(
         "/api/conversations/c1/confirm", json={"action_id": action_id}, headers=AUTH
@@ -329,3 +342,153 @@ def test_summary_tells_the_web_app_which_currency_the_figures_are_in(world: Any)
     fake.currency = resolve("cad")
     body = client.get("/api/summary/today?narrate=false", headers=AUTH).json()
     assert body["currency"] == "cad"
+
+
+class _ProbingLLM(ScriptedLLM):
+    """A narrator that writes to the database from another connection while it "thinks".
+
+    If the route still held the confirmation's write transaction during
+    narration, this write would queue behind it for the whole busy timeout.
+    It also records what the action's status was at that moment.
+    """
+
+    def __init__(self, engine: Engine, action_id: str, responses: list[str]) -> None:
+        """Remember where to look."""
+        super().__init__(responses)
+        self.engine, self.action_id = engine, action_id
+        self.status_seen: str | None = None
+        self.write_took: float | None = None
+
+    def complete(self, *, system: str, messages: Any, max_tokens: int = 2048) -> str:
+        """Probe, then answer the script."""
+        started = time.monotonic()
+        with session_scope(self.engine) as session:
+            self.status_seen = pending_actions.get(session, self.action_id).status  # type: ignore[union-attr]
+            conversations.append(session, "probe", "user", "an unrelated write")
+        self.write_took = time.monotonic() - started
+        return super().complete(system=system, messages=messages, max_tokens=max_tokens)
+
+
+def test_confirm_narrates_after_the_result_is_durable_and_outside_any_write_lock(
+    world: Any, engine: Engine
+) -> None:
+    """Success is streamed only once the execution is committed, and the narrator holds no lock."""
+    client, _fake, llm, _ = world
+    llm._responses.append(_step("refund_payment", payment_id="pi_1", amount_cents=4500))
+    with client.stream(
+        "POST", "/api/conversations/c-lock/messages", json={"text": "refund maya 45"}, headers=AUTH
+    ) as r:
+        action_id = _events(r)[-1][1]["action_id"]
+    probing = _ProbingLLM(engine, action_id, ["Refunded $45.00."])
+    client.app.state.services.llm = probing
+    with client.stream(
+        "POST", "/api/conversations/c-lock/confirm", json={"action_id": action_id}, headers=AUTH
+    ) as r:
+        events = _events(r)
+    assert [e for e, _ in events] == ["action", "observation", "answer"]
+    assert events[-1][1]["text"] == "Refunded $45.00."
+    assert probing.status_seen == "executed"
+    assert probing.write_took is not None and probing.write_took < 1.0
+
+
+def test_a_second_approval_of_an_executing_action_is_refused_as_in_progress(
+    world: Any, engine: Engine
+) -> None:
+    """While one approval is inside Stripe, another gets 409 and starts nothing."""
+    client, fake, *_ = world
+    with session_scope(engine) as session:
+        row = pending_actions.create(
+            session, conversation_id="c4", channel="web", actor="owner",
+            action="refund_payment", parameters={"payment_id": "pi_1", "amount_cents": 4500},
+            summary="Refund $45.00", prompt="refund",
+        )
+        assert pending_actions.claim(session, row.id, idempotency_key="exec_live")
+        action_id = row.id
+    response = client.post(
+        "/api/conversations/c4/confirm", json={"action_id": action_id}, headers=AUTH
+    )
+    assert response.status_code == 409 and response.json()["error"]["code"] == "in_progress"
+    assert not [c for c in fake.calls if c[0] == "refund"]
+
+
+def test_interrupted_web_executions_are_recovered_at_startup(engine: Engine) -> None:
+    """A row left `executing` by a dead process is finished when the API starts.
+
+    Stripe had already applied the refund under the stored key; the recovery
+    sends the same key, Stripe replays the receipt, and the row, the audit
+    log, and the transcript are completed without a second refund.
+    """
+    fake = FakeStripeGateway()
+    fake.add_customer("cus_maya", "Maya Chen")
+    fake.add_payment("pi_1", "cus_maya", 9000, occurred_at=NOW - timedelta(minutes=5))
+    fake.refund("pi_1", 4500, idempotency_key="exec_dead")  # what the dead process did
+    with session_scope(engine) as session:
+        row = pending_actions.create(
+            session, conversation_id="c5", channel="web", actor="owner",
+            action="refund_payment", parameters={"payment_id": "pi_1", "amount_cents": 4500},
+            summary="Refund $45.00 to Maya Chen", prompt="refund maya 45",
+        )
+        assert pending_actions.claim(session, row.id, idempotency_key="exec_dead")
+        action_id = row.id
+    with _world(engine, fake=fake) as (client, _fake, _llm, _sent):
+        history = client.get("/api/conversations/c5", headers=AUTH).json()
+        audit = client.get("/api/audit", headers=AUTH).json()
+    with session_scope(engine) as session:
+        row = pending_actions.get(session, action_id)
+        assert row is not None and row.status == "executed"
+        assert json.loads(row.result_json or "{}")["amount_cents"] == 4500
+    assert len([c for c in fake.calls if c[0] == "refund"]) == 1
+    assert len(fake.replays) == 1
+    assert audit[0]["action"] == "refund_payment" and audit[0]["mutation"] is True
+    assert history["messages"][-1]["content"] == "Done: Refund $45.00 to Maya Chen."
+
+
+def test_a_full_refund_proposal_stores_the_figure_the_card_shows(world: Any) -> None:
+    """"Refund Maya's last payment" is stored as $90.00, not as "whatever is left by then"."""
+    client, _fake, llm, _ = world
+    llm._responses.append(_step("refund_payment", payment_id="pi_1"))
+    events = _stream(client, "/api/conversations/c-full/messages", {"text": "refund maya"})
+    assert events[-1][0] == "confirmation"
+    assert events[-1][1]["parameters"] == {"payment_id": "pi_1", "amount_cents": 9000}
+    pending = client.get("/api/conversations/c-full", headers=AUTH).json()["pending"]
+    assert pending["parameters"] == {"payment_id": "pi_1", "amount_cents": 9000}
+
+
+def test_stale_interrupted_web_executions_are_parked_for_review_not_replayed(
+    engine: Engine,
+) -> None:
+    """Past the recovery window the API leaves Stripe alone and tells the owner to check by hand."""
+    from datetime import timedelta
+
+    from sqlalchemy import update
+
+    from app.db.models import PendingAction
+    from app.domain.policy import EXECUTION_RECOVERY_WINDOW
+
+    fake = FakeStripeGateway()
+    fake.add_customer("cus_maya", "Maya Chen")
+    fake.add_payment("pi_1", "cus_maya", 9000, occurred_at=NOW - timedelta(minutes=5))
+    with session_scope(engine) as session:
+        row = pending_actions.create(
+            session, conversation_id="c6", channel="web", actor="owner",
+            action="refund_payment", parameters={"payment_id": "pi_1", "amount_cents": 4500},
+            summary="Refund $45.00 to Maya Chen", prompt="refund maya 45",
+        )
+        assert pending_actions.claim(session, row.id, idempotency_key="exec_stale")
+        action_id = row.id
+        session.execute(
+            update(PendingAction).where(PendingAction.id == action_id)
+            .values(claimed_at=utcnow() - EXECUTION_RECOVERY_WINDOW - timedelta(hours=1))
+        )
+    with _world(engine, fake=fake) as (client, _fake, _llm, _sent):
+        history = client.get("/api/conversations/c6", headers=AUTH).json()
+        audit = client.get("/api/audit", headers=AUTH).json()
+        again = client.post(
+            "/api/conversations/c6/confirm", json={"action_id": action_id}, headers=AUTH
+        )
+    with session_scope(engine) as session:
+        assert pending_actions.get(session, action_id).status == "needs_review"  # type: ignore[union-attr]
+    assert not [c for c in fake.calls if c[0] == "refund"]
+    assert "exec_stale" in json.dumps(audit[0]["result"])
+    assert "manual" in history["messages"][-1]["content"].lower()
+    assert again.status_code == 409 and "manual" in again.json()["error"]["message"]

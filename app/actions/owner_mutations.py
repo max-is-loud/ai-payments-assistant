@@ -8,12 +8,12 @@ and a handler that executes with the injected idempotency key.
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from app.actions.context import OwnerContext
 from app.actions.owner_reads import _invoice_row
 from app.agent.executor import ActionError
-from app.agent.schema import Proposal, ProposalDetails
+from app.agent.schema import Proposal, ProposalDetails, StrictParams
 from app.db import escalations
 from app.domain.money import format_money
 from app.services.escalations import EscalationNotFound, approve_and_notify
@@ -29,7 +29,7 @@ def _key(ctx: OwnerContext) -> str:
     return ctx.idempotency_key or ""
 
 
-class RefundParams(BaseModel):
+class RefundParams(StrictParams):
     """Refund a payment fully or partially."""
 
     payment_id: str = Field(..., description="pi_... from query_payments")
@@ -51,7 +51,8 @@ def describe_refund(ctx: OwnerContext, params: RefundParams) -> Proposal:
         params: The payment and optional amount to refund.
 
     Returns:
-        A proposal describing the refund, with the resolved amount as details.
+        A proposal describing the refund, with the resolved amount as details
+        and pinned into the parameters that approval will execute.
 
     Raises:
         ActionError: Not refundable, or more than the refundable balance.
@@ -75,23 +76,38 @@ def describe_refund(ctx: OwnerContext, params: RefundParams) -> Proposal:
             f"from {payment.occurred_at:%b %d}"
         ),
         details=ProposalDetails(amount_cents=amount, counterparty=payment.customer_name, meta=meta),
+        params=RefundParams(payment_id=params.payment_id, amount_cents=amount),
     )
 
 
 def refund_payment(ctx: OwnerContext, params: RefundParams) -> dict[str, Any]:
-    """Execute the refund.
+    """Execute the refund of exactly the amount that was approved.
+
+    The amount is always sent explicitly, never left for Stripe to resolve.
+    A stored action carries the figure the card showed; if less than that is
+    refundable now, the action fails as stale rather than refunding what is
+    left. A recovering execution skips that check: the balance may already
+    reflect this very refund, and the stored key settles it.
 
     Args:
         ctx: Owner context with gateway and idempotency key.
-        params: The payment and optional amount to refund.
+        params: The payment and the amount to refund (resolved now if unset).
 
     Returns:
         Refund result with id, amount, and status.
+
+    Raises:
+        ActionError: The refundable balance dropped below the approved amount.
     """
     payment = ctx.gateway.get_payment(params.payment_id)
-    refund = ctx.gateway.refund(
-        params.payment_id, params.amount_cents, idempotency_key=_key(ctx)
-    )
+    amount = payment.refundable_cents if params.amount_cents is None else params.amount_cents
+    if not ctx.recovering and amount > payment.refundable_cents:
+        raise ActionError(
+            f"The refundable balance on {params.payment_id} has changed since this was approved: "
+            f"only {_money(ctx, payment.refundable_cents)} can be refunded now. "
+            "Ask again to propose a new refund."
+        )
+    refund = ctx.gateway.refund(params.payment_id, amount, idempotency_key=_key(ctx))
     return {
         "refund_id": refund.id,
         "payment_id": params.payment_id,
@@ -101,7 +117,7 @@ def refund_payment(ctx: OwnerContext, params: RefundParams) -> dict[str, Any]:
     }
 
 
-class CreateInvoiceParams(BaseModel):
+class CreateInvoiceParams(StrictParams):
     """Create a send-by-email invoice with one line."""
 
     customer_id: str = Field(..., description="cus_... from find_customer")
@@ -155,7 +171,7 @@ def create_invoice(ctx: OwnerContext, params: CreateInvoiceParams) -> dict[str, 
     return _invoice_row(invoice)
 
 
-class PaymentLinkParams(BaseModel):
+class PaymentLinkParams(StrictParams):
     """A one-off Stripe payment link."""
 
     amount_cents: int = Field(..., gt=0)
@@ -200,7 +216,7 @@ def create_payment_link(ctx: OwnerContext, params: PaymentLinkParams) -> dict[st
     return {"url": url, "amount_cents": params.amount_cents, "description": params.description}
 
 
-class ApproveEscalationParams(BaseModel):
+class ApproveEscalationParams(StrictParams):
     """Approve a customer's escalated request."""
 
     escalation_id: str = Field(..., description="esc_... from list_escalations")

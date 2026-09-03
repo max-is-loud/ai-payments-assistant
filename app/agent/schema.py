@@ -17,19 +17,31 @@ class ActionCall(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
 
 
-class AnswerParams(BaseModel):
+class StrictParams(BaseModel):
+    """Base for every action's parameters: an unknown key is an error, not a no-op.
+
+    A lenient model drops a misspelt field silently, and the consequence is
+    financial: `amount` for `amount_cents` refunds the whole payment, `statuz`
+    for `status` lists every payment. Rejecting the key returns a correction to
+    the planner instead of executing something the user did not ask for.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AnswerParams(StrictParams):
     """Terminal: reply to the user."""
 
     text: str
 
 
-class ClarifyParams(BaseModel):
+class ClarifyParams(StrictParams):
     """Terminal: ask the user one question."""
 
     question: str
 
 
-class NoParams(BaseModel):
+class NoParams(StrictParams):
     """For actions that take nothing."""
 
 
@@ -89,11 +101,18 @@ class Proposal:
     confirm, optionally with `details` for the card; `resolved` means no
     mutation is needed after all (the ceiling guard uses this to turn a
     payment into an escalation record).
+
+    `params`, when set, are the parameters to store and later execute in
+    place of the planner's: a full refund resolved to the exact figure the
+    card shows, an invoice payment pinned to the amount owed at that moment.
+    Approval then runs what the user saw, and a balance that moved in between
+    fails as stale instead of quietly becoming a different amount.
     """
 
     summary: str | None = None
     resolved: Any = None
     details: ProposalDetails | None = None
+    params: BaseModel | None = None
 
 
 @dataclass(frozen=True)
@@ -113,12 +132,19 @@ class ActionSpec:
             raise ValueError(f"mutation '{self.name}' must provide describe()")
 
 
+# Marks a parameter the server fills in at proposal time (`Field(json_schema_extra=INTERNAL)`).
+# It is stored and validated like any other, but the planner is never shown it.
+INTERNAL = {"internal": True}
+
+
 def _params_outline(model: type[BaseModel]) -> str:
     """Compact `name: type (required?) — description` lines from a model's JSON schema."""
     schema = model.model_json_schema()
     required = set(schema.get("required", []))
     lines = []
     for name, prop in schema.get("properties", {}).items():
+        if prop.get("internal"):
+            continue
         kind = prop.get("type") or " | ".join(o.get("type", "null") for o in prop.get("anyOf", []))
         flag = "required" if name in required else "optional"
         note = f" — {prop['description']}" if prop.get("description") else ""

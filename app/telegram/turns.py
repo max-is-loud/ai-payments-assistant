@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.actions.context import CustomerContext
 from app.actions.customer import PayInvoiceParams, build_customer_registry
-from app.agent.confirm import ConfirmationError, execute_pending
+from app.agent.confirm import ConfirmationError, NeedsReview, execute_pending, recover_executing
 from app.agent.events import AgentEvent
 from app.agent.executor import ActionError
 from app.agent.loop import TurnHooks, run_turn
@@ -87,14 +87,28 @@ def _hooks(session: Session, binding: TelegramBinding, prompt: str) -> TurnHooks
 
 
 def bind_token(deps: BotDeps, telegram_id: int, token: str) -> str | None:
-    """Bind a Telegram account via a seed-minted token; returns the customer name or None."""
-    customer = deps.gateway.find_customer_by_bind_token(token.strip())
+    """Bind a Telegram account via a seed-minted token; returns the customer name or None.
+
+    The token is spent in the same transaction as the binding, so a second
+    account presenting it, or the same account after `/logout`, expiry, or
+    the owner's revocation, gets nothing. The one replay that is answered is
+    the bound account re-sending its own link, which only confirms the
+    connection. The Stripe lookup happens first, with no transaction open.
+    """
+    token = token.strip()
+    customer = deps.gateway.find_customer_by_bind_token(token)
     if customer is None:
         return None
+    now = utcnow()
     with session_scope(deps.engine) as session:
+        if not bindings.consume_token(session, token, telegram_id, now):
+            current = bindings.resolve(session, telegram_id, now)
+            if current is not None and current.stripe_customer_id == customer.id:
+                return current.customer_name
+            return None
         bindings.bind(
             session, telegram_id=telegram_id, customer_id=customer.id,
-            customer_name=customer.name, now=utcnow(),
+            customer_name=customer.name, now=now,
         )
     return customer.name
 
@@ -156,10 +170,11 @@ def propose_payment(deps: BotDeps, binding: TelegramBinding, invoice_id: str) ->
         if proposal.summary is None:
             return [AgentEvent("answer", {"text": proposal.resolved["message"]})]
         hooks = _hooks(session, binding, f"(tapped Pay {invoice_id})")
-        action_id = hooks.propose(spec, params, proposal.summary)
+        stored = proposal.params or params
+        action_id = hooks.propose(spec, stored, proposal.summary)
         return [AgentEvent("confirmation", {
             "action_id": action_id, "action": spec.name,
-            "summary": proposal.summary, "parameters": params.model_dump(),
+            "summary": proposal.summary, "parameters": stored.model_dump(mode="json"),
         })]
 
 
@@ -183,7 +198,56 @@ def confirm_action(deps: BotDeps, binding: TelegramBinding, action_id: str) -> R
     return Reply(f"Done: {execution.summary}.")
 
 
-def cancel_action(deps: BotDeps, action_id: str) -> None:
-    """The Cancel button."""
+def cancel_action(deps: BotDeps, binding: TelegramBinding, action_id: str) -> bool:
+    """The Cancel button: dismiss the stored action for this Telegram actor only.
+
+    Returns:
+        False when there is no such pending action for this customer, worded
+        the same as an unknown id so foreign ids cannot be probed.
+    """
     with session_scope(deps.engine) as session:
-        pending_actions.cancel(session, action_id)
+        return pending_actions.cancel(session, action_id, actor=_actor(binding.telegram_id))
+
+
+def recover_interrupted(deps: BotDeps) -> list[str]:
+    """Finish Telegram executions a previous bot process died in the middle of.
+
+    Runs once at startup. The customer is the one on the row's actor, looked
+    up by Telegram id; the binding may since have been revoked, but the action
+    was approved while it stood, and finishing it under the same idempotency
+    key only completes what Stripe may already have done, and only inside
+    the recovery window; an older row is parked for a manual check. A row
+    whose binding is gone altogether cannot be scoped and is marked failed.
+
+    Returns:
+        The ids that were finished.
+    """
+    with session_scope(deps.engine) as session:
+        interrupted = [
+            (row.id, row.actor, row.summary) for row in pending_actions.executing(session, CHANNEL)
+        ]
+    recovered: list[str] = []
+    for action_id, actor, summary in interrupted:
+        telegram_id = int(actor.removeprefix("telegram:"))
+        try:
+            with session_scope(deps.engine) as session:
+                binding = session.get(TelegramBinding, telegram_id)
+                if binding is None:
+                    pending_actions.fail(session, action_id, "no binding for this Telegram account")
+                    log.error("Cannot recover %s: no binding for %s", action_id, actor)
+                    continue
+                try:
+                    recover_executing(
+                        session=session, action_id=action_id, registry=CUSTOMER_REGISTRY,
+                        ctx=_ctx(deps, session, binding),
+                    )
+                except NeedsReview as exc:
+                    conversations.append(session, actor, "assistant", str(exc))
+                    log.error("%s", exc)
+                    continue
+                conversations.append(session, actor, "assistant", f"Done: {summary}.")
+            recovered.append(action_id)
+            log.warning("Recovered interrupted execution %s", action_id)
+        except Exception:  # noqa: BLE001 — one bad row must not stop the bot
+            log.exception("Could not recover interrupted execution %s", action_id)
+    return recovered

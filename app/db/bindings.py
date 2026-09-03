@@ -1,12 +1,38 @@
-"""Telegram identity bindings and their lifecycle (bind, renew, expire, revoke)."""
+"""Telegram identity bindings and their lifecycle (bind, renew, expire, revoke).
 
+A binding token is spent by its first use (`consume_token`), so a token that
+leaks later, or is replayed after `/logout`, expiry, or the owner's
+revocation, binds nothing. Re-binding needs a new token; the seed mints them.
+"""
+
+import hashlib
 from datetime import datetime
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db.models import TelegramBinding
+from app.db.models import ConsumedBindToken, TelegramBinding
 from app.domain.policy import BINDING_INACTIVITY
+
+
+def consume_token(session: Session, token: str, telegram_id: int, now: datetime) -> bool:
+    """Spend a binding token; False if it was spent before.
+
+    The insert runs in a savepoint so a losing race leaves the caller's
+    transaction usable; the token itself is stored only as a hash.
+    """
+    row = ConsumedBindToken(
+        token_hash=hashlib.sha256(token.encode()).hexdigest(), telegram_id=telegram_id,
+        consumed_at=now,
+    )
+    try:
+        with session.begin_nested():
+            session.add(row)
+            session.flush()
+    except IntegrityError:
+        return False
+    return True
 
 
 def bind(

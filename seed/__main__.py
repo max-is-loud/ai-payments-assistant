@@ -36,9 +36,13 @@ def classify_existing(
     inventory means "seed from scratch" and the caller never reaches here.
 
     A crash can leave every customer seeded but not every invoice — customers
-    and payments are quick, invoices come last. Counting seed-tagged objects
-    against the dataset, rather than trusting a locally-built report, is what
-    catches that.
+    and payments are quick, invoices come last — or leave an invoice created
+    but not finalised, or finalised but not marked paid. Checking each of the
+    dataset's invoices for the state a finished seed leaves it in, under the
+    run the customers belong to, is what catches all of these: an object
+    count would call a draft done, and `--force` voids the previous run's
+    open invoices but Stripe cannot delete them, so they stay in the account
+    with their tags.
 
     Args:
         inventory: What `find_seeded` currently sees in the account.
@@ -48,28 +52,46 @@ def classify_existing(
             safe (see below).
 
     Returns:
-        `("complete", None)`: every customer and invoice the dataset expects
-            is already seed-tagged. Nothing to do.
-        `("resume", run_id)`: short of invoices, but every seeded customer
-            carries the same `run_id` and today's `seed_day`. Stripe caches
-            idempotency keys for about 24h, so replaying that `run_id` is
-            safe: objects already created come back as no-ops, missing ones
-            get created.
-        `("stuck", None)`: short of invoices, and either more than one run id
-            is present or the seeding happened on an earlier day. Resuming
-            under either run id is not knowably safe (an old run's
-            idempotency keys may have already expired), so only `--force`
-            (accepting that the orphaned payments stay) can recover.
+        `("complete", None)`: every customer the dataset expects is seeded
+            under the one run the customers belong to, and every invoice of
+            that run is in its expected state (`paid` or `open`). Nothing to do.
+        `("resume", run_id)`: short of customers or invoices, but every seeded
+            customer carries the same `run_id` and today's `seed_day`. Stripe
+            caches idempotency keys for about 24h, so replaying that `run_id`
+            is safe: objects already created come back as no-ops, missing
+            ones get created, and existing customers are kept as they are.
+        `("stuck", None)`: short, and either more than one run id is present
+            or the seeding happened on an earlier day. Resuming under either
+            run id is not knowably safe (an old run's idempotency keys may
+            have already expired), so only `--force` (accepting that the
+            orphaned payments stay) can recover.
     """
-    complete = len(inventory.customers) >= len(
-        dataset.customers
-    ) and inventory.seeded_invoice_count >= len(dataset.invoices)
+    run_ids = inventory.run_ids
+    if len(run_ids) != 1:
+        return "stuck", None
+    run_id = next(iter(run_ids))
+    complete = len(inventory.customers) >= len(dataset.customers) and _finished_invoices(
+        inventory, dataset, run_id
+    ) == len(dataset.invoices)
     if complete:
         return "complete", None
-    run_ids = inventory.run_ids
-    if len(run_ids) == 1 and inventory.seed_days == {today.isoformat()}:
-        return "resume", next(iter(run_ids))
+    if inventory.seed_days == {today.isoformat()}:
+        return "resume", run_id
     return "stuck", None
+
+
+def _finished_invoices(inventory: Inventory, dataset: Dataset, run_id: str) -> int:
+    """How many of the dataset's invoices this run has in their expected state."""
+    return sum(
+        1 for invoice in dataset.invoices
+        if inventory.invoice_status(run_id, invoice.key) == invoice.expected_status
+    )
+
+
+def _invoice_progress(inventory: Inventory, dataset: Dataset) -> str:
+    """`"N of M invoices finished"` for the run(s) the seeded customers belong to."""
+    have = sum(_finished_invoices(inventory, dataset, run_id) for run_id in inventory.run_ids)
+    return f"{have} of {len(dataset.invoices)} invoices finished"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -110,8 +132,9 @@ def main(argv: list[str] | None = None) -> int:
                     say("error: nothing seeded yet — run `make seed` first")
                     return 1
                 run_id = f"today-{today.isoformat()}"
+                by_key = {c.seed_key: c.id for c in inventory.customers if c.seed_key}
                 by_name = {c.name: c.id for c in inventory.customers}
-                ids = {c.key: by_name[c.name] for c in dataset.customers}
+                ids = {c.key: by_key.get(c.key) or by_name[c.name] for c in dataset.customers}
                 say(f"Adding today's activity ({run_id})")
                 ok, declined = create_payments(
                     client, dataset.today_payments, ids, currency, run_id, say
@@ -139,10 +162,13 @@ def main(argv: list[str] | None = None) -> int:
                 if state == "resume":
                     assert resume_run_id is not None  # guaranteed by classify_existing for "resume"
                     say(
-                        f"Previous seed incomplete ({inventory.seeded_invoice_count} of "
-                        f"{len(dataset.invoices)} invoices) — resuming run {resume_run_id}"
+                        f"Previous seed incomplete ({_invoice_progress(inventory, dataset)}) "
+                        f"— resuming run {resume_run_id}"
                     )
-                    created = create_customers(client, dataset, resume_run_id, say)
+                    created = create_customers(
+                        client, dataset, resume_run_id, say,
+                        existing={c.seed_key: c for c in inventory.customers if c.seed_key},
+                    )
                     ids = {key: c.id for key, c in created.items()}
                     ok, declined = create_payments(
                         client, dataset.payments, ids, currency, resume_run_id, say
@@ -156,8 +182,8 @@ def main(argv: list[str] | None = None) -> int:
                 # state == "stuck": say so plainly and stop — never print success-style figures
                 # for an account we cannot confirm is complete.
                 say(
-                    f"Previous seed incomplete ({inventory.seeded_invoice_count} of "
-                    f"{len(dataset.invoices)} invoices) and cannot be safely resumed "
+                    f"Previous seed incomplete ({_invoice_progress(inventory, dataset)}) "
+                    "and cannot be safely resumed "
                     "(spans more than one run, or was seeded on an earlier day)."
                 )
                 say("  Existing Telegram binding tokens:")

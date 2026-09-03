@@ -4,11 +4,11 @@ from collections.abc import Sequence
 from datetime import date, timedelta
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, model_validator
 
 from app.actions.context import OwnerContext
 from app.agent.events import to_jsonable
-from app.agent.schema import DISPLAY_KEY, NoParams
+from app.agent.schema import DISPLAY_KEY, NoParams, StrictParams
 from app.db import escalations
 from app.domain.models import Invoice, Payment
 from app.domain.periods import Window, date_range_window
@@ -16,7 +16,7 @@ from app.domain.series import DayTotals, daily_totals
 from app.domain.summary import DailyFacts, build_daily_facts, period_totals
 
 
-class QueryPaymentsParams(BaseModel):
+class QueryPaymentsParams(StrictParams):
     """Filters for a payment query; all optional."""
 
     start_date: date | None = Field(None, description="First day, inclusive")
@@ -34,7 +34,7 @@ class QueryPaymentsParams(BaseModel):
     )
 
 
-class ComparePeriodsParams(BaseModel):
+class ComparePeriodsParams(StrictParams):
     """Two inclusive date ranges to compare; the order they are given in does not matter."""
 
     first_start_date: date = Field(..., description="First day of one period, inclusive")
@@ -53,13 +53,13 @@ class ComparePeriodsParams(BaseModel):
         return self
 
 
-class FindCustomerParams(BaseModel):
+class FindCustomerParams(StrictParams):
     """Free-text customer lookup."""
 
     query: str = Field(..., description="Part of a name, email, or a cus_ id")
 
 
-class ListInvoicesParams(BaseModel):
+class ListInvoicesParams(StrictParams):
     """Invoice filters."""
 
     customer_id: str | None = None

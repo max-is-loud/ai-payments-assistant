@@ -43,6 +43,25 @@ def get(session: Session, escalation_id: str) -> Escalation | None:
     return session.get(Escalation, escalation_id)
 
 
+def for_invoice(session: Session, telegram_id: int, invoice_id: str) -> Escalation | None:
+    """The newest undecided or approved escalation this customer filed for one invoice.
+
+    A repeated Pay tap reuses it instead of filing another, whether the owner
+    has answered yet or not; only a rejected one would fall through, and there
+    is no rejection today.
+    """
+    return session.scalars(
+        select(Escalation)
+        .where(
+            Escalation.telegram_id == telegram_id,
+            Escalation.invoice_id == invoice_id,
+            Escalation.status.in_(("pending", "approved")),
+        )
+        .order_by(Escalation.created_at.desc())
+        .limit(1)
+    ).first()
+
+
 def mark_approved(session: Session, escalation_id: str, now: datetime) -> Escalation | None:
     """Approve once; returns None when it was not pending so callers do not re-notify."""
     result = session.execute(

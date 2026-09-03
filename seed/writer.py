@@ -1,6 +1,15 @@
-"""Create the dataset in Stripe. Every call is idempotent per (run_id, object key)."""
+"""Create the dataset in Stripe. Every call is idempotent per (run_id, object key).
+
+Stripe honours an idempotency key only for a request with the same parameters
+as the first; the same key with different parameters is refused. Every
+parameter here is therefore a pure function of the dataset and the run id,
+with one exception: a customer's Telegram binding token is random. A resume
+must not mint a new one for a customer that already exists, so it passes the
+inventory in and those customers are kept as they are.
+"""
 
 import secrets
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -8,6 +17,7 @@ import stripe
 
 from app.domain.currency import Currency
 from seed.dataset import Dataset, SeedPayment
+from seed.inventory import SeededCustomer
 from seed.report import Say
 
 SUCCESS_CARD = "pm_card_visa"
@@ -30,37 +40,61 @@ def _opts(run_id: str, key: str) -> dict[str, str]:
 
 
 def create_customers(
-    client: stripe.StripeClient, dataset: Dataset, run_id: str, say: Say
+    client: stripe.StripeClient,
+    dataset: Dataset,
+    run_id: str,
+    say: Say,
+    existing: Mapping[str, SeededCustomer] | None = None,
 ) -> dict[str, CreatedCustomer]:
-    """Create customers with a card on file and a Telegram bind token in metadata."""
+    """Create customers with a card on file and a Telegram bind token in metadata.
+
+    Args:
+        client: Stripe client.
+        dataset: The customers to create.
+        run_id: Idempotency namespace for this run.
+        say: Output sink.
+        existing: Customers of this run already in the account, by seed key.
+            A resume passes the inventory here: those customers keep their id
+            and token, and only the card attachment is replayed (same key,
+            same parameters), so no key is ever reused with a new token.
+
+    Returns:
+        Every dataset customer, created or kept, by seed key.
+    """
     created: dict[str, CreatedCustomer] = {}
+    kept = existing or {}
     for customer in dataset.customers:
-        token = secrets.token_urlsafe(12)
-        row = client.v1.customers.create(
-            {
-                "name": customer.name,
-                "email": customer.email,
-                "metadata": {
-                    "seed_run": run_id,
-                    "seed_key": customer.key,
-                    "seed_day": dataset.today.isoformat(),
-                    "telegram_bind_token": token,
+        previous = kept.get(customer.key)
+        if previous is None:
+            token = secrets.token_urlsafe(12)
+            row = client.v1.customers.create(
+                {
+                    "name": customer.name,
+                    "email": customer.email,
+                    "metadata": {
+                        "seed_run": run_id,
+                        "seed_key": customer.key,
+                        "seed_day": dataset.today.isoformat(),
+                        "telegram_bind_token": token,
+                    },
                 },
-            },
-            options=_opts(run_id, f"cus:{customer.key}"),
-        )
+                options=_opts(run_id, f"cus:{customer.key}"),
+            )
+            # StripeObject (stripe-python 15) is not a dict and has no .get(); convert first.
+            customer_id = row.id
+            token = row.to_dict()["metadata"]["telegram_bind_token"]
+        else:
+            customer_id, token = previous.id, previous.bind_token
+        # Replayed on a resume in case the crash landed between the create and
+        # the attach; both requests carry exactly the parameters they did before.
         method = client.v1.payment_methods.attach(
-            SUCCESS_CARD, {"customer": row.id}, options=_opts(run_id, f"pm:{customer.key}")
+            SUCCESS_CARD, {"customer": customer_id}, options=_opts(run_id, f"pm:{customer.key}")
         )
         client.v1.customers.update(
-            row.id, {"invoice_settings": {"default_payment_method": method.id}}
+            customer_id, {"invoice_settings": {"default_payment_method": method.id}}
         )
-        # StripeObject (stripe-python 15) is not a dict and has no .get(); convert first.
-        data = row.to_dict()
-        created[customer.key] = CreatedCustomer(
-            customer.key, row.id, customer.name, data["metadata"]["telegram_bind_token"]
-        )
-        say(f"  customer {customer.name} ({row.id})")
+        created[customer.key] = CreatedCustomer(customer.key, customer_id, customer.name, token)
+        say(f"  customer {customer.name} ({customer_id}){' — kept' if previous else ''}")
     return created
 
 

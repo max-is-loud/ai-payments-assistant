@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, event, inspect
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -33,6 +33,7 @@ def make_engine(database_url: str) -> Engine:
         cursor.close()
 
     _create_schema(engine)
+    _add_missing_columns(engine)
     return engine
 
 
@@ -56,6 +57,36 @@ def _create_schema(engine: Engine, attempts: int = 3) -> None:
             return
         except OperationalError as exc:
             if "already exists" not in str(exc) or attempt == attempts - 1:
+                raise
+
+
+# Columns added after a database file may already have been created. `create_all`
+# creates missing tables but never alters existing ones, so each is added here.
+_ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("pending_actions", "idempotency_key", "VARCHAR(64)"),
+    ("pending_actions", "claimed_at", "DATETIME"),
+)
+
+
+def _add_missing_columns(engine: Engine) -> None:
+    """Add the columns in `_ADDED_COLUMNS` that an older database file lacks.
+
+    A reviewer's fresh clone never needs this; a local file from before the
+    column existed does. The API and the bot may both attempt it on the same
+    file at the same instant, so the loser's "duplicate column" is tolerated.
+
+    Raises:
+        OperationalError: Any failure other than that collision.
+    """
+    inspector = inspect(engine)
+    for table, column, kind in _ADDED_COLUMNS:
+        if column in {c["name"] for c in inspector.get_columns(table)}:
+            continue
+        try:
+            with engine.begin() as connection:
+                connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+        except OperationalError as exc:
+            if "duplicate column" not in str(exc).lower():
                 raise
 
 

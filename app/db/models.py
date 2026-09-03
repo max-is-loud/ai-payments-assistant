@@ -33,7 +33,14 @@ class Message(Base):
 
 
 class PendingAction(Base):
-    """A proposed mutation awaiting approval. Approval executes exactly these parameters."""
+    """A proposed mutation awaiting approval. Approval executes exactly these parameters.
+
+    `status` is one of pending, executing, executed, failed, cancelled, or
+    needs_review (an execution interrupted too long ago to finish safely).
+    `idempotency_key` is minted when the row is claimed and is the key Stripe
+    sees for this execution, however many times it is attempted; `claimed_at`
+    bounds how long that key can be trusted.
+    """
 
     __tablename__ = "pending_actions"
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
@@ -45,6 +52,8 @@ class PendingAction(Base):
     summary: Mapped[str] = mapped_column(Text)
     prompt: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(16), default="pending")
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     executed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -60,6 +69,19 @@ class TelegramBinding(Base):
     bound_at: Mapped[datetime] = mapped_column(DateTime)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ConsumedBindToken(Base):
+    """A binding token that has been used, so it can never bind again.
+
+    Only a hash of the token is kept. The primary key is the arbiter between
+    two accounts presenting the same token at once: exactly one insert lands.
+    """
+
+    __tablename__ = "consumed_bind_tokens"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(Integer)
+    consumed_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class Escalation(Base):

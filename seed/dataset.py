@@ -66,6 +66,15 @@ class SeedInvoice:
     due_in_days: int
     paid: bool
 
+    @property
+    def expected_status(self) -> str:
+        """The Stripe status a finished seed leaves this invoice in: `paid` or `open`.
+
+        A draft, or an open invoice that should have been paid, means the
+        writer was interrupted between its steps and the seed is not done.
+        """
+        return "paid" if self.paid else "open"
+
 
 @dataclass(frozen=True)
 class Dataset:

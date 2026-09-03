@@ -1,4 +1,4 @@
-"""Owner approval of an escalation: mark it, then hand the customer a payment link.
+"""Owner approval of an escalation: mark it durably, then hand the customer a payment link.
 
 Shared by the chat action `approve_escalation` and `POST /api/escalations/{id}/approve`.
 """
@@ -67,6 +67,11 @@ def approve_and_notify(
         return ApprovalOutcome(
             row.id, row.customer_name, row.amount_cents, row.invoice_id, None, False, True
         )
+    # The hosted invoice page takes payment, so handing it over is the moment
+    # the ceiling is lifted. That must not be undone by a rollback after the
+    # send, and the bot process must be able to see the approval, so it is
+    # committed before the link is fetched or delivered.
+    session.commit()
     hosted_url = (
         gateway.get_invoice(row.invoice_id).hosted_url if row.invoice_id else None
     )

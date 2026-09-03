@@ -1,4 +1,14 @@
-"""What handlers receive. One context type per channel; both carry `idempotency_key`."""
+"""What handlers receive. One context type per channel.
+
+Both carry `idempotency_key`, the key Stripe sees for the execution, and
+`recovering`, set only when a previous process died mid-execution and the
+action is being finished under that same key. A recovering handler skips the
+checks it would make against current state before calling Stripe (is the
+invoice still open, is this much still refundable): Stripe may already have
+applied the operation, in which case those checks would refuse to finish it,
+and the replay under the stored key is the authoritative answer either way.
+Ownership and the ceiling are not state checks and still apply.
+"""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -27,6 +37,7 @@ class OwnerContext:
     now: datetime
     notify: Notifier
     idempotency_key: str | None = None
+    recovering: bool = False
 
 
 @dataclass
@@ -39,6 +50,7 @@ class CustomerContext:
     customer_name: str
     now: datetime
     idempotency_key: str | None = None
+    recovering: bool = False
 
 
 def no_notifier(_telegram_id: int, _text: str, _url: str | None) -> bool:

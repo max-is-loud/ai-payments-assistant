@@ -1,17 +1,26 @@
 """Conversational routes: send a turn, confirm or cancel a proposal, read history."""
 
 import json
+import logging
 from collections.abc import Iterator
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.actions.context import OwnerContext
 from app.actions.owner_registry import build_owner_registry
-from app.agent.confirm import ConfirmationError, UnknownAction, execute_pending
+from app.agent.confirm import (
+    AlreadyDecided,
+    ConfirmationError,
+    InProgress,
+    NeedsReview,
+    UnknownAction,
+    execute_pending,
+    recover_executing,
+)
 from app.agent.events import AgentEvent
 from app.agent.loop import TurnHooks, run_turn
 from app.agent.narrator import narrate_result
@@ -24,9 +33,68 @@ from app.domain.periods import local_timezone
 from app.llm.base import ChatMessage, LLMError
 from app.stripe_.gateway import StripeGatewayError
 
+if TYPE_CHECKING:
+    from app.api.app import Services
+
 router = APIRouter(prefix="/api/conversations", dependencies=[Depends(require_owner)])
 OWNER_REGISTRY = build_owner_registry()
 CHANNEL, ACTOR = "web", "owner"
+
+log = logging.getLogger(__name__)
+
+
+def _done(summary: str) -> str:
+    """The transcript line when no narrator ran: the summary the owner approved."""
+    return f"Done: {summary}."
+
+
+def _owner_ctx(services: "Services", session: Session) -> OwnerContext:
+    """Owner context over the process services, outside a request."""
+    return OwnerContext(
+        gateway=services.gateway, session=session, now=datetime.now(local_timezone()),
+        notify=services.notify,
+    )
+
+
+def recover_interrupted(services: "Services") -> list[str]:
+    """Finish web-channel executions a previous API process died in the middle of.
+
+    Runs once at startup. Each row inside the recovery window is re-driven
+    with its stored parameters and idempotency key, so Stripe replays whatever
+    it already did rather than doing it again; the transcript gets the plain
+    "Done" line, since no narration is worth a model call the owner is not
+    waiting for. A row past the window is parked for a manual check and the
+    transcript says so. A failure on one row is logged and marks that row
+    failed; it never stops the API.
+
+    Returns:
+        The ids that were finished.
+    """
+    with session_scope(services.engine) as session:
+        interrupted = [
+            (row.id, row.conversation_id) for row in pending_actions.executing(session, CHANNEL)
+        ]
+    recovered: list[str] = []
+    for action_id, conversation_id in interrupted:
+        try:
+            with session_scope(services.engine) as session:
+                try:
+                    execution = recover_executing(
+                        session=session, action_id=action_id, registry=OWNER_REGISTRY,
+                        ctx=_owner_ctx(services, session),
+                    )
+                except NeedsReview as exc:
+                    conversations.append(session, conversation_id, "assistant", str(exc))
+                    log.error("%s", exc)
+                    continue
+                conversations.append(
+                    session, conversation_id, "assistant", _done(execution.summary)
+                )
+            recovered.append(action_id)
+            log.warning("Recovered interrupted execution %s", action_id)
+        except Exception:  # noqa: BLE001 — one bad row must not stop startup
+            log.exception("Could not recover interrupted execution %s", action_id)
+    return recovered
 
 
 class MessageIn(BaseModel):
@@ -41,13 +109,9 @@ class ActionRef(BaseModel):
     action_id: str
 
 
-def _ctx(request: Request, session: Session, idempotency_key: str | None = None) -> OwnerContext:
+def _ctx(request: Request, session: Session) -> OwnerContext:
     """Owner context over the process services."""
-    services = request.app.state.services
-    return OwnerContext(
-        gateway=services.gateway, session=session, now=datetime.now(local_timezone()),
-        notify=services.notify, idempotency_key=idempotency_key,
-    )
+    return _owner_ctx(request.app.state.services, session)
 
 
 def _hooks(session: Session, conversation_id: str, prompt: str) -> TurnHooks:
@@ -116,27 +180,32 @@ def post_message(conversation_id: str, body: MessageIn, request: Request) -> Any
 
 
 @router.post("/{conversation_id}/confirm")
-def confirm(
-    conversation_id: str, body: ActionRef, request: Request,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-) -> Any:
-    """Execute the stored action and stream action → observation → answer."""
+def confirm(conversation_id: str, body: ActionRef, request: Request) -> Any:
+    """Execute the stored action and stream action → observation → answer.
+
+    The execution commits itself in short transactions (see `execute_pending`)
+    and its idempotency key is the one stored on the action, so a client
+    cannot supply a different key per request. Success frames are streamed
+    only once the result is durable; the narrator then runs with no
+    transaction open, and its sentence is stored in one more short one.
+    """
     services = request.app.state.services
     with session_scope(services.engine) as session:
         row = pending_actions.get(session, body.action_id)
         if row is None or row.actor != ACTOR or row.conversation_id != conversation_id:
             raise UnknownAction()
+        if row.status == "executing":
+            raise InProgress()
         if row.status != "pending":
-            raise ConfirmationError("already_decided", f"That action was already {row.status}.")
+            raise AlreadyDecided(row.status)
 
     def events() -> Iterator[AgentEvent]:
-        """Claim, execute, narrate."""
+        """Claim and execute, then narrate, then record the sentence."""
         with session_scope(services.engine) as session:
             try:
                 execution = execute_pending(
                     session=session, action_id=body.action_id, registry=OWNER_REGISTRY,
-                    ctx=_ctx(request, session, idempotency_key), expected_actor=ACTOR,
-                    idempotency_key=idempotency_key,
+                    ctx=_ctx(request, session), expected_actor=ACTOR,
                 )
             except ConfirmationError as exc:
                 yield AgentEvent(
@@ -149,22 +218,25 @@ def confirm(
                     "detail": exc.detail,
                 })
                 return
-            yield AgentEvent("action", {"name": execution.action, "args": execution.parameters})
-            yield AgentEvent(
-                "observation", {"name": execution.action, "result": execution.result}
+        # From here the execution is durable: a dropped stream or a slow
+        # narrator changes nothing about what Stripe did or what is recorded.
+        yield AgentEvent("action", {"name": execution.action, "args": execution.parameters})
+        yield AgentEvent(
+            "observation", {"name": execution.action, "result": execution.result}
+        )
+        try:
+            text = narrate_result(
+                services.llm, action=execution.action, summary=execution.summary,
+                result=execution.result, currency=services.gateway.default_currency(),
             )
-            try:
-                text = narrate_result(
-                    services.llm, action=execution.action, summary=execution.summary,
-                    result=execution.result, currency=services.gateway.default_currency(),
-                )
-            except LLMError:
-                text = f"Done: {execution.summary}."
+        except LLMError:
+            text = _done(execution.summary)
+        with session_scope(services.engine) as session:
             conversations.append(session, conversation_id, "assistant", text)
-            yield AgentEvent(
-                "answer",
-                {"text": text, "result": {"action": execution.action, "data": execution.result}},
-            )
+        yield AgentEvent(
+            "answer",
+            {"text": text, "result": {"action": execution.action, "data": execution.result}},
+        )
 
     return sse_response(events(), debug=services.settings.debug)
 
@@ -174,10 +246,10 @@ def cancel(conversation_id: str, body: ActionRef, request: Request) -> dict[str,
     """Dismiss a pending action so it can never be approved."""
     with session_scope(request.app.state.services.engine) as session:
         row = pending_actions.get(session, body.action_id)
-        if row is None or row.conversation_id != conversation_id:
+        if row is None or row.actor != ACTOR or row.conversation_id != conversation_id:
             raise UnknownAction()
-        if not pending_actions.cancel(session, body.action_id):
-            raise ConfirmationError("already_decided", f"That action was already {row.status}.")
+        if not pending_actions.cancel(session, body.action_id, actor=ACTOR):
+            raise AlreadyDecided(row.status)
     return {"status": "cancelled"}
 
 

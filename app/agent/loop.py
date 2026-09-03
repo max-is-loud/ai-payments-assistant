@@ -172,10 +172,14 @@ def run_turn(
                 assert spec.describe is not None  # enforced by ActionSpec.__post_init__
                 proposal = spec.describe(ctx, params)
                 if proposal.summary is not None:
-                    action_id = hooks.propose(spec, params, proposal.summary)
+                    # What is stored is what will run: the resolved parameters
+                    # when describe() pinned them, the planner's otherwise.
+                    stored = proposal.params or params
+                    action_id = hooks.propose(spec, stored, proposal.summary)
                     yield AgentEvent("confirmation", {
                         "action_id": action_id, "action": spec.name,
-                        "summary": proposal.summary, "parameters": args,
+                        "summary": proposal.summary,
+                        "parameters": stored.model_dump(mode="json"),
                         "details": to_jsonable(proposal.details),
                     })
                     return

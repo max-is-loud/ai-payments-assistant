@@ -70,7 +70,11 @@ def test_refund_describe_names_customer_amount_and_date(
 def test_refund_executes_with_the_context_idempotency_key(
     engine: Engine, account: FakeStripeGateway
 ) -> None:
-    """The key injected by execute_pending reaches Stripe; None means refund the remainder."""
+    """The key injected by execute_pending reaches Stripe; an unset amount means the remainder.
+
+    The gateway always receives an explicit figure, so Stripe is never left to
+    decide how much to refund.
+    """
     with session_scope(engine) as session:
         ctx = OwnerContext(
             gateway=account,
@@ -85,7 +89,7 @@ def test_refund_executes_with_the_context_idempotency_key(
         "refund",
         {
             "payment_id": "pi_maya",
-            "amount_cents": None,
+            "amount_cents": 9000,
             "idempotency_key": "act_x",
         },
     )
@@ -361,3 +365,53 @@ def test_confirmation_summaries_carry_the_account_currency(
         ctx = OwnerContext(gateway=account, session=session, now=NOW, notify=lambda *_: True)
         proposal = describe_refund(ctx, RefundParams(payment_id="pi_maya", amount_cents=4500))
         assert proposal.summary == "Refund CA$45.00 to Maya Chen — CA$90.00 payment from Sep 01"
+
+
+def test_a_full_refund_is_frozen_at_the_amount_the_owner_saw(
+    engine: Engine, account: FakeStripeGateway
+) -> None:
+    """"Refund Maya's last payment" resolves to a figure, and that figure is what is stored.
+
+    The planner leaves `amount_cents` unset for a full refund. The proposal
+    returns parameters with the amount filled in, so approval executes the
+    $90.00 the card showed even if the balance changes in between.
+    """
+    with session_scope(engine) as session:
+        ctx = OwnerContext(gateway=account, session=session, now=NOW, notify=lambda *_: True)
+        proposal = describe_refund(ctx, RefundParams(payment_id="pi_maya"))
+    assert proposal.params == RefundParams(payment_id="pi_maya", amount_cents=9000)
+    partial = describe_refund(ctx, RefundParams(payment_id="pi_maya", amount_cents=4500))
+    assert partial.params == RefundParams(payment_id="pi_maya", amount_cents=4500)
+
+
+def test_a_refund_fails_as_stale_when_the_refundable_balance_changed(
+    engine: Engine, account: FakeStripeGateway
+) -> None:
+    """A refund of the frozen amount is refused, not silently reduced, once the balance dropped."""
+    account.refund("pi_maya", 5000, idempotency_key="elsewhere")
+    with session_scope(engine) as session:
+        ctx = OwnerContext(
+            gateway=account, session=session, now=NOW, notify=lambda *_: True,
+            idempotency_key="act_x",
+        )
+        with pytest.raises(ActionError, match="changed"):
+            refund_payment(ctx, RefundParams(payment_id="pi_maya", amount_cents=9000))
+    assert [c for c in account.calls if c[0] == "refund"] == [
+        ("refund", {"payment_id": "pi_maya", "amount_cents": 5000, "idempotency_key": "elsewhere"})
+    ]
+
+
+def test_a_recovering_refund_skips_the_balance_check(
+    engine: Engine, account: FakeStripeGateway
+) -> None:
+    """After a crash the balance may already reflect this refund; the stored key decides."""
+    account.refund("pi_maya", 9000, idempotency_key="exec_dead")
+    with session_scope(engine) as session:
+        ctx = OwnerContext(
+            gateway=account, session=session, now=NOW, notify=lambda *_: True,
+            idempotency_key="exec_dead", recovering=True,
+        )
+        result = refund_payment(ctx, RefundParams(payment_id="pi_maya", amount_cents=9000))
+    assert result["amount_cents"] == 9000
+    assert len([c for c in account.calls if c[0] == "refund"]) == 1
+    assert len(account.replays) == 1

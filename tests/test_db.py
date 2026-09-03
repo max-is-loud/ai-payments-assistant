@@ -28,10 +28,13 @@ def test_pending_action_can_be_claimed_exactly_once(engine: Engine) -> None:
         )
         action_id = action.id
     with session_scope(engine) as session:
-        assert pending_actions.claim(session, action_id) is True
+        assert pending_actions.claim(session, action_id, idempotency_key="exec_1") is True
     with session_scope(engine) as session:
-        assert pending_actions.claim(session, action_id) is False
-        assert pending_actions.get(session, action_id).status == "executed"  # type: ignore[union-attr]
+        assert pending_actions.claim(session, action_id, idempotency_key="exec_2") is False
+        row = pending_actions.get(session, action_id)
+        assert row is not None
+        # The first claim's key is the one every retry and recovery must reuse.
+        assert row.status == "executing" and row.idempotency_key == "exec_1"
 
 
 def test_binding_expires_after_inactivity(engine: Engine) -> None:
@@ -141,3 +144,50 @@ def test_make_engine_survives_another_process_creating_the_schema_first(
     assert lied, "the stale check was never consulted"
     with engine.connect() as conn:
         assert conn.exec_driver_sql("SELECT count(*) FROM conversations").scalar() == 0
+
+
+def test_make_engine_adds_the_execution_key_column_to_an_older_file(tmp_path: Path) -> None:
+    """A database created before `idempotency_key` existed gains the column on the next start.
+
+    `create_all` never alters an existing table, so the engine adds the column
+    itself; a reviewer's fresh clone never takes this path, a local file from
+    an earlier build does.
+    """
+    from sqlalchemy import inspect
+
+    from app.db.engine import make_engine
+
+    url = f"sqlite:///{tmp_path / 'older.db'}"
+    engine = make_engine(url)
+    with engine.begin() as connection:
+        connection.exec_driver_sql("ALTER TABLE pending_actions DROP COLUMN idempotency_key")
+
+    def columns(target: Any) -> set[str]:
+        """The column names of pending_actions as the file has them right now."""
+        return {c["name"] for c in inspect(target).get_columns("pending_actions")}
+
+    assert "idempotency_key" not in columns(engine)
+    engine.dispose()
+
+    reopened = make_engine(url)
+    assert "idempotency_key" in columns(reopened)
+    with session_scope(reopened) as session:
+        row = pending_actions.create(
+            session, conversation_id="c1", channel="web", actor="owner", action="refund_payment",
+            parameters={}, summary="s", prompt="p",
+        )
+        assert pending_actions.claim(session, row.id, idempotency_key="exec_1")
+
+
+def test_cancel_requires_the_proposing_actor(engine: Engine) -> None:
+    """An action id alone cannot dismiss a proposal; the actor must be the one who made it."""
+    with session_scope(engine) as session:
+        action_id = pending_actions.create(
+            session, conversation_id="telegram:7", channel="telegram", actor="telegram:7",
+            action="pay_invoice", parameters={"invoice_id": "in_1"}, summary="Pay", prompt="p",
+        ).id
+    with session_scope(engine) as session:
+        assert pending_actions.cancel(session, action_id, actor="telegram:9") is False
+        assert pending_actions.get(session, action_id).status == "pending"  # type: ignore[union-attr]
+        assert pending_actions.cancel(session, action_id, actor="telegram:7") is True
+        assert pending_actions.get(session, action_id).status == "cancelled"  # type: ignore[union-attr]

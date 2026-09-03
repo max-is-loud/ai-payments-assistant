@@ -20,3 +20,12 @@ BINDING_INACTIVITY = timedelta(days=14)
 
 MAX_AGENT_ITERATIONS = 5
 """Planner steps per turn before the loop gives up, so a confused model cannot spin."""
+
+EXECUTION_RECOVERY_WINDOW = timedelta(hours=20)
+"""How long after its claim an interrupted execution may be finished under its stored key.
+
+Stripe honours an idempotency key for at least 24 hours and may drop it after
+that, so a replay any later could be a new operation rather than the original.
+Inside this window (kept short of Stripe's 24 hours) recovery re-sends the
+same key; past it the row is parked for a manual check against Stripe.
+"""

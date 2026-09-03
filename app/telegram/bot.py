@@ -10,7 +10,7 @@ from app.settings import load_settings
 from app.stripe_.cached_gateway import CachedGateway
 from app.stripe_.owner_client import StripeOwnerGateway
 from app.telegram import handlers
-from app.telegram.turns import BotDeps
+from app.telegram.turns import BotDeps, recover_interrupted
 
 
 def build_application(deps: BotDeps) -> Application:  # type: ignore[type-arg]
@@ -36,6 +36,7 @@ def main() -> None:
         settings=settings, gateway=CachedGateway(StripeOwnerGateway(settings.stripe_secret_key)),
         llm=build_backend(settings), engine=make_engine(settings.database_url),
     )
+    recover_interrupted(deps)
     build_application(deps).run_polling()
 
 
