@@ -343,9 +343,7 @@ rest of the app is built on.
   before it asks. It has one check for each thing fixed here — a short
   follow-up question that must not spiral into three ERR lines, every
   object in the Stripe dashboard in the account's own currency, `currency`
-  on the summary response — and it marks the admitted limitation, the
-  declined chart, as not-a-flag so a run does not chase what this document
-  already concedes. Because the reviewer's
+  on the summary response. Because the reviewer's
   currency is unknown, every figure a reader *sees* sits behind a
   placeholder that a control at the top of the page swaps for the account's
   symbol; what a reader *types* stays "$250", the brief's own wording, which
