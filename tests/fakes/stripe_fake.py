@@ -2,15 +2,21 @@
 
 Tests build a small account with `add_*`, exercise actions, and assert on
 `calls` — a list of (method_name, kwargs) tuples in call order.
+
+Writes honour idempotency keys the way Stripe does: a key seen before with
+the same parameters replays the original result without performing the
+operation again (recorded under `replays`, not `calls`), and a key reused
+with different parameters is rejected.
 """
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from datetime import date as date_type
 from typing import Any
 
 from app.domain.currency import USD, Currency
 from app.domain.models import Customer, Invoice, Payment, Refund
-from app.stripe_.gateway import NotFound
+from app.stripe_.gateway import NotFound, StripeGatewayError
 
 
 class FakeStripeGateway:
@@ -23,6 +29,9 @@ class FakeStripeGateway:
         self.invoices: dict[str, Invoice] = {}
         self.bind_tokens: dict[str, str] = {}
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        # Replayed writes: the same key and parameters seen again, nothing performed.
+        self.replays: list[tuple[str, dict[str, Any]]] = []
+        self._idempotent: dict[str, tuple[str, dict[str, Any], Any]] = {}
         self._counter = 0
         # Set to another Currency to stage a non-dollar account.
         self.currency = USD
@@ -97,6 +106,32 @@ class FakeStripeGateway:
         """Append a call for later assertions."""
         self.calls.append((name, kwargs))
 
+    def _idempotently(
+        self, name: str, key: str, params: dict[str, Any], perform: Callable[[], Any]
+    ) -> Any:
+        """Run `perform` once per key, the way Stripe treats an idempotency key.
+
+        An empty key means the caller opted out (direct handler tests). A key
+        seen before with equal parameters replays the stored result; with
+        different parameters it is an error, as Stripe's would be.
+
+        Raises:
+            StripeGatewayError: The key was already used with other parameters.
+        """
+        if key and key in self._idempotent:
+            seen_name, seen_params, result = self._idempotent[key]
+            if (seen_name, seen_params) != (name, params):
+                raise StripeGatewayError(
+                    f"Idempotency key {key!r} was already used with different parameters."
+                )
+            self.replays.append((name, {**params, "idempotency_key": key}))
+            return result
+        self._record(name, **params, idempotency_key=key)
+        result = perform()
+        if key:
+            self._idempotent[key] = (name, params, result)
+        return result
+
     def list_payments(self) -> list[Payment]:
         """Newest first, like Stripe."""
         self._record("list_payments")
@@ -149,26 +184,26 @@ class FakeStripeGateway:
         self, payment_id: str, amount_cents: int | None, *, idempotency_key: str
     ) -> Refund:
         """Mark the payment refunded and return a receipt."""
-        self._record(
-            "refund",
-            payment_id=payment_id,
-            amount_cents=amount_cents,
-            idempotency_key=idempotency_key,
-        )
-        if payment_id not in self.payments:
-            raise NotFound(f"No payment {payment_id}")
-        payment = self.payments[payment_id]
-        amount = payment.refundable_cents if amount_cents is None else amount_cents
-        refunded = payment.amount_refunded_cents + amount
-        status = "refunded" if refunded >= payment.amount_cents else "partially_refunded"
-        self.payments[payment_id] = Payment(
-            **{**payment.__dict__, "amount_refunded_cents": refunded, "status": status}
-        )
-        return Refund(
-            id=self._next("re"),
-            payment_id=payment_id,
-            amount_cents=amount,
-            status="succeeded",
+
+        def perform() -> Refund:
+            """Apply the refund to the ledger."""
+            if payment_id not in self.payments:
+                raise NotFound(f"No payment {payment_id}")
+            payment = self.payments[payment_id]
+            amount = payment.refundable_cents if amount_cents is None else amount_cents
+            refunded = payment.amount_refunded_cents + amount
+            status = "refunded" if refunded >= payment.amount_cents else "partially_refunded"
+            self.payments[payment_id] = Payment(
+                **{**payment.__dict__, "amount_refunded_cents": refunded, "status": status}
+            )
+            return Refund(
+                id=self._next("re"), payment_id=payment_id, amount_cents=amount,
+                status="succeeded",
+            )
+
+        return self._idempotently(
+            "refund", idempotency_key,
+            {"payment_id": payment_id, "amount_cents": amount_cents}, perform,
         )
 
     def create_invoice(
@@ -181,42 +216,44 @@ class FakeStripeGateway:
         idempotency_key: str,
     ) -> Invoice:
         """Create an open invoice."""
-        self._record(
-            "create_invoice",
-            customer_id=customer_id,
-            amount_cents=amount_cents,
-            description=description,
-            due_date=due_date,
-            idempotency_key=idempotency_key,
-        )
         due_at = datetime(
             due_date.year, due_date.month, due_date.day, 23, 59, tzinfo=UTC
         )
-        return self.add_invoice(
-            self._next("in"),
-            customer_id,
-            amount_cents,
-            description=description,
-            due_at=due_at,
+        return self._idempotently(
+            "create_invoice", idempotency_key,
+            {
+                "customer_id": customer_id, "amount_cents": amount_cents,
+                "description": description, "due_date": due_date,
+            },
+            lambda: self.add_invoice(
+                self._next("in"), customer_id, amount_cents, description=description,
+                due_at=due_at,
+            ),
         )
 
     def create_payment_link(
         self, *, amount_cents: int, description: str, idempotency_key: str
     ) -> str:
         """Return a fake URL."""
-        self._record(
-            "create_payment_link",
-            amount_cents=amount_cents,
-            description=description,
-            idempotency_key=idempotency_key,
+        return self._idempotently(
+            "create_payment_link", idempotency_key,
+            {"amount_cents": amount_cents, "description": description},
+            lambda: f"https://buy.example/{self._next('plink')}",
         )
-        return f"https://buy.example/{self._next('plink')}"
 
     def pay_invoice(self, invoice_id: str, *, idempotency_key: str) -> Invoice:
         """Mark paid and record a matching payment."""
-        invoice = self.get_invoice(invoice_id)
-        self._record("pay_invoice", invoice_id=invoice_id, idempotency_key=idempotency_key)
-        paid = Invoice(**{**invoice.__dict__, "status": "paid", "amount_remaining_cents": 0})
-        self.invoices[invoice_id] = paid
-        self.add_payment(self._next("pi"), invoice.customer_id, invoice.total_cents)
-        return paid
+
+        def perform() -> Invoice:
+            """Settle the invoice and book the payment behind it."""
+            if invoice_id not in self.invoices:
+                raise NotFound(f"No invoice {invoice_id}")
+            invoice = self.invoices[invoice_id]
+            paid = Invoice(**{**invoice.__dict__, "status": "paid", "amount_remaining_cents": 0})
+            self.invoices[invoice_id] = paid
+            self.add_payment(self._next("pi"), invoice.customer_id, invoice.total_cents)
+            return paid
+
+        return self._idempotently(
+            "pay_invoice", idempotency_key, {"invoice_id": invoice_id}, perform
+        )
