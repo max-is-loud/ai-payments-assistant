@@ -11,6 +11,7 @@ from typing import Any
 
 import stripe
 
+from app.domain.currency import Currency, resolve
 from app.domain.mapping import to_customer, to_invoice, to_payment, to_refund
 from app.domain.models import Customer, Invoice, Payment, Refund
 from app.domain.periods import local_timezone
@@ -71,6 +72,7 @@ class StripeOwnerGateway:
 
     def __init__(self, api_key: str) -> None:
         """Create a pinned-version client. Retries are left to the SDK (2 attempts)."""
+        self._api_key = api_key
         self._client = stripe.StripeClient(
             api_key, stripe_version=STRIPE_API_VERSION, max_network_retries=2
         )
@@ -79,6 +81,30 @@ class StripeOwnerGateway:
     def api_version(self) -> str:
         """The pinned API version, exposed for tests and the seed report."""
         return STRIPE_API_VERSION
+
+    def default_currency(self) -> Currency:
+        """The currency this account settles in, read from Stripe rather than assumed.
+
+        A customer is locked to a currency by the first invoice raised against
+        it and can never be moved; payment intents and charges cannot be
+        deleted at all. So an assumed currency does not fail cleanly — it
+        leaves permanent objects in someone else's account. Callers ask first.
+
+        Returns:
+            The currency every write to this account must name.
+
+        Raises:
+            StripeGatewayError: The account could not be read.
+            UnsupportedCurrency: The account has no minor unit to express cents
+                in; see `app.domain.currency.resolve`.
+        """
+        with translate_stripe_errors():
+            # `accounts.retrieve` on the service client addresses a *connected*
+            # account by id; the key's own account is only reachable this way.
+            account = stripe.Account.retrieve(
+                api_key=self._api_key, stripe_version=STRIPE_API_VERSION
+            )
+        return resolve(account.to_dict().get("default_currency") or "")
 
     @property
     def client(self) -> stripe.StripeClient:

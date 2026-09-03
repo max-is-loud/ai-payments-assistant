@@ -1,17 +1,28 @@
-"""Cents-to-dollars formatting. The only place an amount becomes a string in Python."""
+"""Cents-to-string formatting. The only place an amount becomes a string in Python."""
 
 from typing import Any
+
+from app.domain.currency import USD, Currency
+
+
+def format_money(cents: int, currency: Currency) -> str:
+    """Render integer cents in one account's currency, with grouping.
+
+    Negative amounts put the sign before the symbol so refunds read the way a
+    bank statement prints them.
+    """
+    sign = "-" if cents < 0 else ""
+    units, remainder = divmod(abs(cents), 100)
+    return f"{sign}{currency.symbol}{units:,}.{remainder:02d}"
 
 
 def format_usd(cents: int) -> str:
     """Render integer cents as a US dollar string with grouping.
 
-    Negative amounts put the sign before the dollar sign so refunds read the
-    way a bank statement prints them.
+    For the callers that have not been handed the account's currency yet; they
+    keep formatting as USD, which is what they assumed before it was read.
     """
-    sign = "-" if cents < 0 else ""
-    dollars, remainder = divmod(abs(cents), 100)
-    return f"{sign}${dollars:,}.{remainder:02d}"
+    return format_money(cents, USD)
 
 
 def dollar_strings(value: Any) -> Any:

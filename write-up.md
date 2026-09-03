@@ -272,6 +272,35 @@ rest of the app is built on.
   not have caught this — a scripted planner recovers on cue whatever the
   transcript says — so the new one asserts against the transcript itself.
 
+- **A Canadian sandbox, and an invoice currency that could not be argued
+  with.** Seeding a second test account stopped on "You cannot combine
+  currencies on a single invoice. This invoice has invoice items currency usd
+  that conflicts with the invoice currency cad." The seed had named
+  `"currency": "usd"` on every create since its first commit, so the parameter
+  was not the problem. Stripe's rule is that a customer is single-currency: the
+  first invoice or invoice item raised against it fixes that currency
+  permanently, and where nothing else has decided, the account's own default
+  does. The account's `country` was CA, so its default was CAD — the customer
+  locked to CAD, and a USD line item on a CAD invoice is the one combination
+  Stripe refuses. The 161 USD payment intents written moments earlier had not
+  helped, because a payment intent locks nothing.
+
+  What made it worth stopping for was the blast radius rather than the error.
+  The brief never says USD; it writes `$` four times and nothing else, and `$`
+  is CAD in Canada. Stripe gives a new sandbox the currency of its country, so
+  a reviewer outside the US meets this on their first command — and meets it
+  *after* the seed has created around 136 payment intents. Payment intents and
+  charges cannot be deleted, and `--force` removes only customers and invoices,
+  so there is no recovery: the account keeps the wreckage. The sandbox this
+  surfaced in still holds one CAD payment intent among 161, two CAD invoices
+  among five, and one customer that is CAD for good. The seed now reads the
+  account's `default_currency` before creating anything and names it on every
+  write, so the objects agree with each other whatever country the reviewer is
+  in. Currencies with no minor unit — JPY, KRW and the rest — are refused at
+  that same point rather than mishandled, because every amount here is an
+  integer number of cents and there is no honest way to express one of those in
+  a currency that has none.
+
 ## Limitations / with more time
 
 - **Native tool calling was deliberately not used.** The propose-execute
@@ -321,6 +350,14 @@ rest of the app is built on.
   the planner as raw UTC, so an answer that quotes one states a time in a
   different zone from the charts beside it. Formatting it like every other date
   is a small change that arrived too late to make.
+
+- **The app still formats every figure as dollars.** The seed writes in the
+  account's currency now, but the domain records do not carry one and both
+  formatters — `app/domain/money.py` and its browser twin — print a `$`. On a
+  CAD account the objects in Stripe are right and the labels on screen are
+  wrong, which is a quieter version of the same fault. Carrying the currency
+  through the domain records, the two formatters, and the Telegram ceiling is
+  the other half of that change.
 
 ## Bonus: the escalation loop
 

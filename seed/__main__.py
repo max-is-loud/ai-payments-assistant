@@ -11,6 +11,7 @@ import sys
 from datetime import date, datetime
 from typing import Literal
 
+from app.domain.currency import UnsupportedCurrency
 from app.domain.periods import local_timezone
 from app.settings import ConfigError, load_settings
 from app.stripe_.gateway import StripeGatewayError
@@ -88,7 +89,8 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as exc:
         say(f"error: {exc}")
         return 2
-    client = StripeOwnerGateway(settings.stripe_secret_key).client
+    gateway = StripeOwnerGateway(settings.stripe_secret_key)
+    client = gateway.client
     today = datetime.now(local_timezone()).date()
     dataset = build_dataset(today)
     try:
@@ -97,6 +99,12 @@ def main(argv: list[str] | None = None) -> int:
             if args.clean:
                 clean(client, inventory, say)
                 return 0
+            # Asked before anything is written, and after --clean so a removal
+            # still works on an account this project could not seed: Stripe
+            # locks a customer to a currency on its first invoice and never
+            # releases it, and payment intents cannot be deleted at all.
+            currency = gateway.default_currency()
+            say(f"Account settles in {currency.label}")
             if args.today_only:
                 if not inventory.customers:
                     say("error: nothing seeded yet — run `make seed` first")
@@ -105,7 +113,9 @@ def main(argv: list[str] | None = None) -> int:
                 by_name = {c.name: c.id for c in inventory.customers}
                 ids = {c.key: by_name[c.name] for c in dataset.customers}
                 say(f"Adding today's activity ({run_id})")
-                ok, declined = create_payments(client, dataset.today_payments, ids, run_id, say)
+                ok, declined = create_payments(
+                    client, dataset.today_payments, ids, currency, run_id, say
+                )
                 say(f"  {ok} payments, {declined} declines")
                 return 0
             if inventory.customers and not args.force:
@@ -120,7 +130,10 @@ def main(argv: list[str] | None = None) -> int:
                         "--today-only adds a fresh day."
                     )
                     print_report(
-                        dataset, [(c.name, c.bind_token) for c in inventory.customers], say
+                        dataset,
+                        [(c.name, c.bind_token) for c in inventory.customers],
+                        currency,
+                        say,
                     )
                     return 0
                 if state == "resume":
@@ -132,11 +145,13 @@ def main(argv: list[str] | None = None) -> int:
                     created = create_customers(client, dataset, resume_run_id, say)
                     ids = {key: c.id for key, c in created.items()}
                     ok, declined = create_payments(
-                        client, dataset.payments, ids, resume_run_id, say
+                        client, dataset.payments, ids, currency, resume_run_id, say
                     )
                     say(f"  {ok} payments created, {declined} declined as intended")
-                    create_invoices(client, dataset, ids, resume_run_id, say)
-                    print_report(dataset, [(c.name, c.bind_token) for c in created.values()], say)
+                    create_invoices(client, dataset, ids, currency, resume_run_id, say)
+                    print_report(
+                        dataset, [(c.name, c.bind_token) for c in created.values()], currency, say
+                    )
                     return 0
                 # state == "stuck": say so plainly and stop — never print success-style figures
                 # for an account we cannot confirm is complete.
@@ -161,11 +176,17 @@ def main(argv: list[str] | None = None) -> int:
             say(f"Seeding {run_id} against API version {api_version}")
             created = create_customers(client, dataset, run_id, say)
             ids = {key: c.id for key, c in created.items()}
-            ok, declined = create_payments(client, dataset.payments, ids, run_id, say)
+            ok, declined = create_payments(client, dataset.payments, ids, currency, run_id, say)
             say(f"  {ok} payments created, {declined} declined as intended")
-            create_invoices(client, dataset, ids, run_id, say)
-            print_report(dataset, [(c.name, c.bind_token) for c in created.values()], say)
+            create_invoices(client, dataset, ids, currency, run_id, say)
+            print_report(
+                        dataset, [(c.name, c.bind_token) for c in created.values()], currency, say
+                    )
             return 0
+    except UnsupportedCurrency as exc:
+        # Raised before the first create, so the account is untouched.
+        say(f"error: {exc}")
+        return 2
     except StripeGatewayError as exc:
         say(f"error: {exc}")
         if exc.hint:

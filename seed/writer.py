@@ -6,6 +6,7 @@ from datetime import timedelta
 
 import stripe
 
+from app.domain.currency import Currency
 from seed.dataset import Dataset, SeedPayment
 from seed.report import Say
 
@@ -67,10 +68,21 @@ def create_payments(
     client: stripe.StripeClient,
     payments: list[SeedPayment],
     customer_ids: dict[str, str],
+    currency: Currency,
     run_id: str,
     say: Say,
 ) -> tuple[int, int]:
-    """Create payment intents; returns (succeeded, declined). Declines raise CardError by design."""
+    """Create payment intents; returns (succeeded, declined). Declines raise CardError by design.
+
+    Args:
+        client: Stripe client.
+        payments: The payments to create.
+        customer_ids: Seed customer key to Stripe id.
+        currency: The account's own currency; a payment intent created in any
+            other one can never be deleted.
+        run_id: Idempotency namespace for this run.
+        say: Output sink.
+    """
     ok = declined = 0
     for index, payment in enumerate(payments, 1):
         metadata = {
@@ -82,7 +94,7 @@ def create_payments(
             metadata["demo_created_at"] = payment.occurred_at.isoformat()
         params = {
             "amount": payment.amount_cents,
-            "currency": "usd",
+            "currency": currency.code,
             "customer": customer_ids[payment.customer_key],
             "payment_method": DECLINE_CARD if payment.decline else SUCCESS_CARD,
             "confirm": True,
@@ -107,10 +119,25 @@ def create_invoices(
     client: stripe.StripeClient,
     dataset: Dataset,
     customer_ids: dict[str, str],
+    currency: Currency,
     run_id: str,
     say: Say,
 ) -> int:
-    """Create, itemise, finalise; mark historical ones paid out of band."""
+    """Create, itemise, finalise; mark historical ones paid out of band.
+
+    Args:
+        client: Stripe client.
+        dataset: The dataset being written.
+        customer_ids: Seed customer key to Stripe id.
+        currency: The account's own currency, named on both the invoice and its
+            item. Stripe rejects an invoice whose item disagrees with it, and
+            the first invoice locks the customer to that currency for good.
+        run_id: Idempotency namespace for this run.
+        say: Output sink.
+
+    Returns:
+        How many invoices were created.
+    """
     for invoice in dataset.invoices:
         metadata = {"seed_run": run_id, "seed_key": invoice.key}
         if invoice.paid:
@@ -120,7 +147,7 @@ def create_invoices(
             {
                 "customer": customer_ids[invoice.customer_key],
                 "collection_method": "send_invoice",
-                "currency": "usd",
+                "currency": currency.code,
                 "days_until_due": invoice.due_in_days if invoice.due_in_days > 0 else 30,
                 "description": invoice.description,
                 "metadata": metadata,
@@ -132,7 +159,7 @@ def create_invoices(
                 "customer": customer_ids[invoice.customer_key],
                 "invoice": row.id,
                 "amount": invoice.amount_cents,
-                "currency": "usd",
+                "currency": currency.code,
                 "description": invoice.description,
             },
             options=_opts(run_id, f"ii:{invoice.key}"),
