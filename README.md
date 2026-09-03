@@ -40,11 +40,29 @@ record, including the reasoning behind every choice below, is
 - Two action registries — owner and customer — share one executor. The
   bot's registry contains no action that takes a `customer_id` parameter, so
   a prompt injection asking it to read another customer's invoices finds no
-  action to call and no parameter to fill.
+  action to call and no parameter to fill. Every parameter model forbids
+  unknown keys, so a misspelt field is a planner retry, never a silently
+  different action. The bot answers only in private chats — a group or
+  channel gets one fixed sentence and nothing is looked up — and it never
+  hands out Stripe's hosted invoice page for an invoice at or above the
+  ceiling, because that page takes payment; the link goes out only once the
+  owner's approval is committed. The figures a customer reads never pass
+  through the model: amounts travel under an interface-only `display` key
+  the loop strips from the planner's observation, and the renderer writes
+  them onto each invoice's button and into one total line of its own.
 - A proposed mutation is resolved fully, then stored and returned for
   approval with concrete details ("Refund $45.00 to Maya Chen"). Approval
   executes **the stored action**, never a freshly re-planned one — the model
-  cannot substitute a different action between proposal and execution.
+  cannot substitute a different action between proposal and execution. The
+  figure the card shows is the figure stored: a full refund is pinned to the
+  refundable balance at proposal time and an invoice payment to the amount
+  owed, and either fails as stale if the balance moved in between. Execution
+  is three short transactions — claim, Stripe call, record — so a slow
+  provider never holds the SQLite writer lock, a dropped stream cannot roll a
+  finished execution back, and an execution a process died in the middle of
+  is finished at the next start under the same idempotency key, provided the
+  claim is less than twenty hours old; Stripe keeps a key for at least 24
+  hours, so an older row is parked for a manual check instead of replayed.
 - The $2,000 payment ceiling and the 14-day binding expiry are each defined
   once, in `app/domain/policy.py`, and imported everywhere they apply.
 - Stripe is the source of truth for money. SQLite holds only what Stripe
@@ -71,8 +89,12 @@ real resources any client can inspect on its own.
 - **Confirmation as a resource, not a dialog.** A `confirmation` event
   carries a server-stored `action_id`; approving it executes that stored
   action rather than asking the model to plan again.
-- **`Idempotency-Key` passthrough** on mutating routes, forwarded to Stripe,
-  so a double-clicked approval cannot refund or charge twice.
+- **One execution key per approval, minted by the server.** Claiming a
+  pending action stores an idempotency key on it, and that key is what
+  Stripe sees however many times the approval is attempted; a client cannot
+  supply a different one per request. A second click while the first is
+  still with Stripe gets `409 in_progress`; a click after it finished gets
+  `409 already_decided`.
 - **Errors carry a fix.** Every error is `{error: {code, message, hint}}` —
   "set `STRIPE_SECRET_KEY` in `.env`", not "unauthorized" — and SSE error
   frames carry the same three fields. A fourth, `detail`, holds developer
@@ -80,7 +102,9 @@ real resources any client can inspect on its own.
   runs with `DEBUG=1` and is written to the API log either way.
 - **Auth** is a single `OWNER_API_TOKEN` bearer token required on every
   `/api/*` route, shipped with a working local default in `.env.example` so
-  it costs the reviewer nothing to run.
+  it costs the reviewer nothing to run. It is compiled into the browser
+  bundle, so it is a localhost demonstration convenience and not production
+  authentication; production would use server-managed owner sessions.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -191,7 +215,14 @@ measurement against a running API; the before-and-after is in the write-up.
    already has this run's data is a no-op that reprints the same tokens and
    figures rather than doubling revenue; if a previous run crashed partway
    through, the next plain run detects the incomplete state and resumes it
-   from the persisted `seed_run` id rather than starting over. `--force`
+   under the same `seed_run` id: the customers it already created keep their
+   ids and tokens, only what is missing is created, and every Stripe request
+   carries exactly the parameters it did before, which is what Stripe's
+   idempotency keys require. Objects an earlier run left behind (`--force`
+   voids invoices but cannot delete them) are counted under their own run,
+   never this one, completeness is judged per invoice against the state a
+   finished seed leaves it in (a draft is not done), and a resume that
+   crashes again resumes again. `--force`
    wipes what it can and reseeds from scratch (Stripe cannot delete
    `PaymentIntent`s or `Charge`s, so any old ones remain); `--clean` only
    removes and says as much about what it cannot; `--today-only` adds one
@@ -215,11 +246,14 @@ measurement against a running API; the before-and-after is in the write-up.
    signal on, because a bot left behind keeps polling Telegram with the
    same token. Open `http://127.0.0.1:5173`.
 
-6. **Bind Telegram.** In the bot's chat, send `/start <token>` with a token
-   `make seed` printed for the customer you want to act as, or open
-   `https://t.me/<your-bot-username>?start=<token>` to do the same as a
-   deep link. `/logout` disconnects; the owner can also revoke a binding
-   from the API.
+6. **Bind Telegram.** In a private chat with the bot, send `/start <token>`
+   with a token `make seed` printed for the customer you want to act as, or
+   open `https://t.me/<your-bot-username>?start=<token>` to do the same as
+   a deep link. The bot works only in private chats; in a group it says so
+   and does nothing else. A token binds once: `/logout`, fourteen idle days,
+   or the owner's revoke from the API end the binding, and the same token
+   cannot bind again afterwards — reseed with `make seed ARGS=--force` for
+   fresh tokens if you need to re-bind.
 
 ## Demo script
 
@@ -237,8 +271,12 @@ reviewer's first fifteen minutes:
    Maya and the exact amount. Click **Approve** and a receipt card appears;
    `GET /api/audit` shows the mutation alongside the prompt that produced it.
 4. In Telegram, send `/start <Acme's token>` to bind, then ask *"what do I
-   owe?"* — the reply states a count and a due date, never a dollar figure
-   in the chat, with **View** and **Pay** buttons per invoice.
+   owe?"* — the model's sentence states a count and a due date; the figures
+   come from the server, on each invoice's button and in a "You owe …" line
+   under the reply. The $1,200 invoice gets **View** and **Pay**; the $2,400
+   one gets a single button naming the amount and the owner's approval,
+   because Stripe's hosted invoice page takes payment and is not handed out
+   where the ceiling applies.
 5. Tap **Pay** on the smaller Acme invoice ($1,200). Confirm the message
    that states the amount, then **Confirm** — a receipt button appears, and
    the web app's "Taken" figure rises on its next refresh.
@@ -259,7 +297,31 @@ for both. The load-bearing claims each have a test behind them:
   made, not after.
 - A customer-scoped Stripe client cannot reach another customer's data.
 - Approving a stored confirmation executes the parameters the user saw, not
-  a freshly re-planned action.
+  a freshly re-planned action; a full refund is stored as the figure the card
+  showed, and a balance that moved since fails as stale.
+- Confirmation is three short transactions: an unrelated write lands while
+  Stripe is slow, a rollback after execution cannot revert it, concurrent
+  approvals produce one Stripe operation, and an execution interrupted
+  between Stripe and the record is finished at startup under the same key
+  inside the recovery window, or parked for a manual check past it.
+- Every parameter model forbids unknown keys: `amount` for `amount_cents`
+  and `statuz` for `status` are rejected and retried, never silently dropped.
+- The bot answers only in private chats: in a group or channel every command,
+  message, and button gets one fixed sentence and no dependency is touched;
+  Cancel, like Confirm, acts only on the bound customer's own action.
+- Amounts reach the customer on the buttons and in a server-written line and
+  never appear in the planner's view of an observation.
+- An invoice at or above the ceiling carries no hosted-page URL in any
+  observation, button, or callback, and the link is sent only once the
+  owner's approval is committed; a binding token binds once and cannot undo
+  `/logout`, expiry, or revocation.
+- `make seed` resumes an interrupted run through a stateful fake of the
+  Stripe client that enforces the idempotency-key rules, at every customer
+  and invoice write boundary: every object ends up exactly once and in its
+  expected state, tokens survive, and no key is reused with other parameters.
+- A confirmation card says "Approved" only once the executed result has
+  streamed; an HTTP failure or an error frame puts its buttons back with the
+  failure underneath, and the dashboard refreshes only after success.
 - `occurred_at` prefers `metadata.demo_created_at` and falls back to
   Stripe's `created` — the one place the seed concession is read.
 - The executor rejects malformed or unregistered actions before they reach

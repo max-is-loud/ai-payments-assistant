@@ -1,484 +1,226 @@
 # Write-up
 
-## Scope
+## Scope and approach
 
-This went past the brief's 3–5 hours, and it is worth saying so plainly rather
-than making you infer it from the commit count.
+The solution has three parts: a FastAPI backend, a React single-page application
+for the business owner, and a Telegram bot for customers. A seed command creates
+the Stripe test data required to exercise all three. I also implemented one
+optional feature: an escalation workflow that connects the customer bot back to
+the owner when a payment reaches the $2,000 limit.
 
-I know what the 3–5 hour version looks like, because it is the first third of
-this one: the propose-execute loop, the owner action registry, the seed
-script, a chat box with an input and a response area, and the Telegram bot
-with the $2,000 ceiling enforced in Python. Every requirement in the brief is
-met by that version. Nothing after it was necessary.
+I spent approximately six hours on the project over several sessions. That is
+slightly above the suggested three-to-five-hour range; the additional time went
+mainly into validation, hardening, documentation, interface polish, and the
+optional escalation workflow. A later hardening pass, driven by regression
+tests written before each fix, closed the defects a review of the first version
+found; they are described where they apply below.
 
-What the extra time bought was the part a brief cannot ask for directly. The
-owner app reads like an instrument rather than a chat box; the charts are
-drawn from Python-computed series, so no figure on the page has passed through
-a model; a shared cache turns an eight-second cold load into an instant one;
-and the escalation loop makes the two deliverables one product instead of two.
-The design system and the documentation vault are checked in as tooling rather
-than as assignment code — they exist so the visual language and the reasoning
-behind it are reproducible rather than merely described.
+The main architectural decision was to keep the language model responsible for
+understanding and communication, but not for financial execution. Each owner
+request enters a capped action loop. At every step, the model either proposes one
+named action with structured parameters or produces a terminal response. Python
+validates and executes proposed actions, then returns typed results for the model
+to explain. Mutating actions are stored and shown to the owner for confirmation
+before execution. The customer bot uses the same pattern with a smaller,
+customer-scoped action registry.
 
-Where I did hold the line is the assistant itself. The owner registry opened
-at nine actions and stands at ten; the single addition, `compare_periods`,
-exists to take arithmetic away from the model rather than to give it a new
-power. Growth went into how faithfully the interface renders what the
-assistant already knew, never into widening what it may do.
-
-The clearest example of that line is a thing the app cannot do. Ask it for
-"payments per customer as a bar chart" and it will tell you it cannot draw
-one, and offer a table instead. The fix is small and obvious — an aggregating
-parameter on `query_payments`, and a chart the interface draws from the result
-the way it already draws period comparisons — and I left it unbuilt on
-purpose. Every chart on the page today is read from a Python-computed series
-under an interface-only `display` key the planner never sees. Opening a
-model-facing path to charts means owning a contract: which result shapes are
-chartable, what the interface does when the model asks for a chart over data
-that will not support one, and how it declines without the model narrating a
-picture that is not there. That contract is worth more care than the feature
-is worth, and a partial version of it would have undermined the invariant the
-rest of the app is built on.
+I used Claude Code throughout the project for planning, implementation support,
+test generation, and review. I treated it as a development tool rather than a
+runtime dependency: the application code, action boundaries, tests, and product
+decisions remain explicit in the repository and can be reviewed independently of
+the tool that helped produce them.
 
 ## Assumptions
 
-- **Single owner, single currency.** The design targets one business owner
-  and one currency throughout — whichever the Stripe account settles in,
-  read from the account rather than assumed. There is no multi-tenant or
-  multi-currency handling, and accounts in a currency with no minor unit
-  (JPY, KRW) are refused up front.
-- **Demo-scale data.** Listing and filtering over Stripe's pagination in
-  Python is fine at the roughly 150-object scale a seeded sandbox produces;
-  it would not be at production volume.
-- **Reviewer runs seed and app on the same machine, ideally the same day.**
-  The daily summary's "today" is computed from the local clock, and the
-  seed script's own resume logic is keyed to it; `--today-only` covers
-  returning the next morning without re-seeding from scratch.
-- **Telegram identity is an identifier, not an authenticator.** A Telegram
-  `chat_id` proves "the same account as last time," never "this account
-  belongs to Acme Corp." That link is established once, by a binding token,
-  and trusted thereafter. Binding tokens are minted by the seed script
-  rather than delivered by email verification because seeded customers
-  carry generated, unreceivable addresses — a production deployment would
-  verify by email instead (see Limitations).
+- **One owner and one Stripe account.** This is a single-business proof of
+  concept. It does not include organizations, multiple owners, or role-based
+  permissions.
+- **One settlement currency.** The app reads the Stripe account's default
+  currency and uses it consistently for seeded data, new invoices, payment
+  links, summaries, and charts. Zero-decimal currencies are rejected because the
+  current domain model represents money in cents.
+- **Demo-scale data.** The seeded sandbox contains roughly 150 Stripe objects.
+  Fetching and filtering complete Stripe lists in Python is acceptable at that
+  scale, but it is not the design I would use for a production account.
+- **A fresh, empty Stripe test account.** The reviewer runs the seed command
+  against their own sandbox. Seeded records include `metadata.demo_created_at`
+  so the app can present historical activity even though Stripe controls each
+  object's real `created` timestamp.
+- **Telegram is a demo identity boundary.** A token printed by the seed command
+  binds a Telegram user to one Stripe customer, once: the token is spent on use,
+  and `/logout`, inactivity expiry, or the owner's revocation cannot be undone by
+  replaying it. Only the seed mints tokens, so re-binding after that means
+  reseeding with `--force`. A production version would use verified delivery
+  (email or SMS), rotation, and stronger lifecycle management for that binding.
 
-## Challenges
+## Key challenges and decisions
 
-- **Stripe assigns `created`, and there is no way to import history.** CSV
-  import does not exist for `Charge` or `PaymentIntent` objects — Stripe's
-  data-migration tooling is PAN import (live-mode card credentials, via a
-  support request) and Revenue Recognition import (accounting records, not
-  objects the Payments API returns). Test clocks can create objects at a
-  past `frozen_time` and were seriously considered, but they cap at three
-  customers per clock, expire in about a week (taking their customers with
-  them), and are built for subscription lifecycles rather than one-off
-  payments — disqualifying for data a reviewer might come back to. The
-  resolution is `metadata.demo_created_at`, written by the seed script and
-  read by exactly one function (`app.domain.mapping._occurred_at`); deleting
-  its fallback to Stripe's real `created` is all that separates this from
-  production behavior.
-- **Making the declines real.** Rather than fabricate a "failed" record, the
-  seed script pays two payment intents with Stripe's
-  `pm_card_chargeDeclinedInsufficientFunds` test payment method, producing a
-  genuine `insufficient_funds` decline that the same mapping code every
-  other payment goes through has to handle correctly.
-- **Two processes sharing one SQLite file honestly.** The API and the
-  Telegram bot are separate processes against the same database. WAL mode,
-  short-lived transactions, and a claim-once conditional `UPDATE` on
-  confirmations (`pending → executed` in one statement, checked by row
-  count) keep a double-approval from ever executing twice.
-- **stripe-python 15's `StripeObject` stopped being a dict subclass.** Every
-  domain-mapping function is written against `Mapping[str, Any]` and calls
-  `.get()` on optional fields; in this SDK version `StripeObject` supports
-  `__getitem__` and `__contains__` but not `.get()`. This surfaced live,
-  against the real API, not in a unit test — the fakes construct plain
-  dicts and never exercised the SDK's actual object type. The fix is a
-  single `.to_dict()` boundary in `StripeOwnerGateway` (`_plain()`), so
-  every object crosses into domain code as a plain dict before any mapping
-  function sees it.
-- **The sandbox's default currency was not USD.** A fresh reviewer account
-  can default to a currency other than USD; `invoice_items.create` requested
-  `"currency": "usd"` explicitly while `invoices.create` did not, and Stripe
-  rejected the mismatch the first time an invoice was created against an
-  account whose default was CAD. The fix at the time was to pass
-  `"currency": "usd"` explicitly on every create call. That held until a
-  genuinely Canadian sandbox showed it was the wrong fix — see the two
-  entries near the end of this section.
-- **A re-approvable-confirmation bug, caught in review.** The original
-  `execute_pending` marked a failed confirmation as `failed` but did not
-  commit that write before re-raising in two of its three failure paths; if
-  the surrounding transaction then rolled back on the exception, it could
-  undo the `pending → executed` claim along with it, leaving a supposedly
-  failed action stuck as `pending` and re-approvable. The fix commits the
-  claim and every terminal status change immediately, before any exception
-  can propagate past it, and a regression test asserts an unregistered or
-  invalid stored action ends up `failed` and never executable again.
-- **Formatting crossed channels.** A first walkthrough asked for "a list of
-  all payments made today" and got a wall of text: the model had written a
-  correct Markdown bulleted list, but the web bubble rendered it as a bare
-  string, so the browser collapsed every newline into a space. The deeper
-  problem was that no prompt stated an output format for conversational
-  answers, so each model chose its own — and the two channels can display
-  different things. The web app can render GitHub-flavored Markdown;
-  Telegram renders only a three-tag HTML dialect (`<b>`, `<i>`, `<code>`),
-  has no lists or tables at all, and rejects the *whole message* on any
-  parse error, so a stray `<u>` or an unescaped `&` would mean the customer
-  receives nothing. The solution is one system message per channel, each
-  carrying its own formatting contract — Markdown lists and tables and no
-  retyped ids for the owner, three tags and no Markdown for the customer —
-  built by two separate functions so there is no call that could pair the
-  wrong two, with a test that neither prompt contains the other's rules.
-  Neither side trusts the prompt: `react-markdown` renders the web text
-  (raw HTML is escaped to visible text, `javascript:` links are emptied),
-  and every Telegram send passes through a sanitizer that keeps balanced
-  allowed tags, escapes reserved characters, strips unknown tags, and
-  downgrades to plain text on any nesting Telegram forbids — the prompt
-  asks for the format; the boundary guarantees a deliverable message.
-- **Three wasted round-trips, found by watching the trail.** The same
-  walkthrough's event trail showed the planner recovering from its own
-  mistakes, each costing a model call: it sent `null` for every parameter
-  it left unset, which failed validation on a defaulted integer (the
-  executor now treats `null` as omitted); it presented twenty of
-  twenty-one payments as "all of them" because the observation truncated
-  silently (it now reports `matched_count` and `listed_count`); and one
-  reply carried a second JSON object after the first, which a
-  first-`{`-to-last-`}` slice could not parse (the parser now decodes the
-  first complete object and ignores what follows). None of these were
-  visible before the trail made every step an event.
-- **An SSE framing mismatch, also caught only in final review.** The server
-  streamed sse-starlette's default `\r\n`-separated frames while the
-  frontend's hand-rolled parser split on `\n\n`; both curl and httpx's
-  `iter_lines()` normalize line endings, so every manual check and every
-  existing test looked fine while a real browser would have received zero
-  events — a reminder that streaming contracts need a raw-byte test, not
-  just a line-normalized one.
-- **Errors that read as stack dumps.** With everything working, a
-  walkthrough of the owner web app hit a model call that failed, and what
-  the owner saw was `Error code: 400 - {'type': 'error', ...}`: both LLM
-  backends had put the SDK's message straight into the envelope's `hint`,
-  the one field reserved for "what to do next". The same pass found the
-  planner's self-corrections rendered as "Malformed JSON in the model
-  reply", a Stripe failure inside a turn shown as a `{"error": ..., "hint":
-  ...}` block, and an unanticipated exception either answering a bare
-  "Internal Server Error" or, once the SSE stream had opened, ending the
-  turn as an empty bubble. The `{code, message, hint}` envelope had been
-  designed precisely so that errors carry a fix; the failure was developer
-  text leaking into fields written for the owner. The first instinct, a
-  filter in the frontend, does not work: the browser cannot tell a
-  hand-written hint from an SDK dump, and that raw text is exactly what a
-  reviewer wants when something goes wrong on their machine. So the split
-  lives on the server. Errors gained a fourth field, `detail`, for
-  developer text; the HTTP envelope and SSE error frames carry it only when
-  the API runs with `DEBUG=1`, and it always goes to the API log, so the
-  default hides nothing from whoever runs the process. One build serves
-  both readers, the web app needs no flag of its own, and the trail keeps
-  every step visible: a planner retry is one sentence with the parse error
-  behind the flag, a failed action is a sentence under the ERR stamp
-  instead of a JSON block, and a crash mid-stream is a final error frame
-  rather than silence.
+### Keeping financial actions deterministic
 
-- **Charts without the model in the loop.** The redesign added four
-  visualizations — a three-week trend, today by hour, top customers, and a
-  two-period comparison inside an answer — and the tempting shortcut was to
-  have the model emit chart data alongside its prose. That would have put
-  numbers the owner reads in the one place the design forbids them: the
-  model's output. Instead the charts read a new no-LLM route,
-  `GET /api/summary/series`, computed the same way as the daily facts, and
-  the comparison chart is derived from the two ranged `query_payments`
-  observations already streamed in the turn, which now carry zero-filled
-  `daily_totals`. The first live run showed why that data has to stay out of
-  the model's reach: with per-day totals in the observation, the planner ran
-  a single two-week query, split it in half itself, and reported the cents as
-  dollars — the exact arithmetic the loop exists to prevent. Interface-only
-  data now travels under a `display` key that the loop strips from what the
-  model reads, so the trail and the web app get the whole result and the
-  planner sees the observation it always saw. The audit log showed the same
-  planner had been inconsistent on this question all along — sometimes two
-  7-day queries, sometimes one 14-day query and ninety-one rows summed by
-  hand — so it also gained `compare_periods`, an action that returns both
-  totals and the change as facts; the chart reads that single observation.
-  Two more things surfaced doing it. Today's seeded payments carry
-  Stripe's real timestamp — whatever hour the reviewer ran the seed — so an
-  "8am to 6pm" chart could silently lose all of them; the series returns all
-  24 hours and the axis widens to include any activity outside business
-  hours. And the design's confirmation card leads with a figure and a name
-  that existed only inside the summary sentence; parsing prose in the
-  browser was the wrong place to get them, so proposals now carry structured
-  details alongside the sentence, and the card falls back to the sentence
-  when a restored proposal has none. The hero also exposed the summary
-  narrator: with the Python figure of $2,578.00 sitting beside its prose, the
-  model's "$257,800.00" — cents read as dollars — was suddenly impossible to
-  miss. Both narrators now receive every amount pre-formatted in the
-  account's currency, so the prose can only copy a figure, never convert one.
-- **A design handoff as a spec.** The visual redesign was produced in Claude
-  Design as a handoff bundle — tokens, component classes, reference React
-  components, and a full-page kit — and treated as the spec: the bundle is
-  installed as a Claude Code skill so the values travel with the repository,
-  and `web/src/styles/` mirrors it rather than forking it. The kit did not
-  account for two production realities, Markdown inside the assistant's
-  bubbles and a loading state before facts arrive, which are the only
-  additions the production stylesheet makes.
-- **Eight seconds of "syncing…".** The first smoke test of the redesigned
-  page opened on a dash where the figure should be, gridlines where the chart
-  should be, and a masthead that said "syncing…" for eight seconds. It looked
-  broken. The first step was to measure rather than guess: `make timing`
-  (`scripts/time_reads.py`, committed before any fix so the result would be a
-  before-and-after) times every read the page makes, alone and fired together
-  the way the page fires them. The cause was not the model. Every dashboard
-  read lists the whole account from Stripe with charge and customer
-  expansions, because seeded history is dated by metadata rather than
-  `created` and cannot be filtered server-side — a cost the design accepted
-  knowingly and then paid once per read, three times on load and twice per
-  poll. Three changes, one commit each. `CachedGateway` wraps the Stripe
-  gateway behind the same protocol and answers the three listings from one
-  fetch for a 20-second TTL: concurrent misses wait on a single fetch, and the
-  process's own writes forget exactly what they change (a refund drops
-  payments, paying an invoice drops payments and invoices). The TTL sits
-  below the page's 30-second poll so no poll serves numbers older than one
-  TTL, which also bounds how late the bot's payments reach the owner's
-  screen: at most one poll later than before. The API warms that cache at
-  startup, off the request path. And the browser keeps the last good numbers
-  in `localStorage`, so a reload paints them at once under an honest
-  "synced 3m ago", refuses a snapshot from another day, and swaps in fresh
-  data when it lands; the trend says "Loading three weeks of takings…" on a
-  genuinely cold start instead of showing bare gridlines.
+Natural-language requests are useful at the interface, but they are not a safe
+execution format. The model therefore cannot call Stripe directly. It proposes
+an action from a registry, and the executor handles customer lookup, date ranges,
+amount conversion, Stripe calls, and error handling in ordinary Python.
 
-  | Read on page load | Before | After, cache warm |
-  | --- | --- | --- |
-  | Facts (hero, pills, unpaid) | 9.2s | 0.00s |
-  | Series (trend, hourly, top customers) | 9.6s | 0.00s |
-  | Narrated summary (includes the model) | 8.9s | 2.3s |
-  | Three poll reads fired together | 8.5s, two listings | one listing shared (7.7s cold, ms warm) |
+This boundary is especially important for refunds and invoices. Before a
+mutation runs, the resolved operation is stored and presented as a concrete
+confirmation such as “Refund CA$45.00 to Maya Chen.” Approval executes that
+stored operation rather than asking the model to plan it again. The same action
+system can be tested with fake Stripe and LLM implementations, without network
+access or nondeterministic model output.
 
-  What was deliberately not done: a local mirror of Stripe, synced
-  incrementally by `created` and, in production, by webhooks, would make even
-  the cold path instant. It would also make SQLite a second source of truth
-  for money, which this design avoids on purpose, so it stays the named
-  production path rather than something built for the submission.
+The dashboard follows the same principle. Charts and structured totals are
+computed in Python; the narrator receives formatted facts rather than raw cents.
+I added a dedicated `compare_periods` action after testing showed that asking a
+model to infer two date ranges and total raw payment rows was needlessly fragile.
 
-- **A retry loop that taught the planner to keep failing.** A follow-up
-  question — "when was this done?" — produced three `planner_retry` lines in a
-  row, and the log gave the same reason each time: "No JSON object found in the
-  model reply". The extractor tolerates code fences, prose on either side, and
-  a trailing second object, so that error means the reply contained no `{` at
-  all: the planner had answered in prose instead of proposing a step. The cause
-  was the correction itself. On a parse failure the loop fed the reply back
-  through `_feedback`, which records it under the assistant role — and a model
-  imitates its transcript, where the strongest example is its own last turn. So
-  each retry left a stronger case for answering in prose than the one before
-  it. Those three attempts plus the `summarize_day` that followed spent four of
-  the five steps a turn is allowed, and the fifth had to be terminal, which is
-  why the answer was a bare date and the timestamp took a second question. A
-  reply that does not parse is now corrected without being recorded: the loop
-  states the error, repeats the required shape as a user message, and drops the
-  reply. The two retry paths whose replies *did* parse still feed their step
-  back, because protocol-shaped JSON is a useful example. The old test could
-  not have caught this — a scripted planner recovers on cue whatever the
-  transcript says — so the new one asserts against the transcript itself.
+### Creating useful historical test data
 
-- **A Canadian sandbox, and an invoice currency that could not be argued
-  with.** Seeding a second test account stopped on "You cannot combine
-  currencies on a single invoice. This invoice has invoice items currency usd
-  that conflicts with the invoice currency cad." The seed had named
-  `"currency": "usd"` on every create since its first commit, so the parameter
-  was not the problem. Stripe's rule is that a customer is single-currency: the
-  first invoice or invoice item raised against it fixes that currency
-  permanently, and where nothing else has decided, the account's own default
-  does. The account's `country` was CA, so its default was CAD — the customer
-  locked to CAD, and a USD line item on a CAD invoice is the one combination
-  Stripe refuses. The 161 USD payment intents written moments earlier had not
-  helped, because a payment intent locks nothing.
+Stripe does not allow an application to assign historical `created` timestamps
+to PaymentIntents and Charges. Test clocks were not a good fit for this use case,
+so the seed command writes a demo timestamp in metadata. One mapping function
+uses that value when present and otherwise falls back to Stripe's real timestamp.
+This keeps the concession isolated and makes it easy to remove outside the demo.
 
-  What made it worth stopping for was the blast radius rather than the error.
-  The brief never says USD; it writes `$` four times and nothing else, and `$`
-  is CAD in Canada. Stripe gives a new sandbox the currency of its country, so
-  a reviewer outside the US meets this on their first command — and meets it
-  *after* the seed has created around 136 payment intents. Payment intents and
-  charges cannot be deleted, and `--force` removes only customers and invoices,
-  so there is no recovery: the account keeps the wreckage. The sandbox this
-  surfaced in still holds one CAD payment intent among 161, two CAD invoices
-  among five, and one customer that is CAD for good. The seed now reads the
-  account's `default_currency` before creating anything and names it on every
-  write, so the objects agree with each other whatever country the reviewer is
-  in. Currencies with no minor unit — JPY, KRW and the rest — are refused at
-  that same point rather than mishandled, because every amount here is an
-  integer number of cents and there is no honest way to express one of those in
-  a currency that has none.
+A run interrupted partway is resumed under the same run id: the customers it
+already created keep their ids and binding tokens, only the missing objects are
+created, and each request repeats exactly the parameters Stripe first saw under
+that idempotency key, which is what Stripe requires for a key to be honoured.
+Invoices an earlier run left behind (`--force` voids them but cannot delete
+them) are counted under their own run, and completeness is judged per invoice
+against the state a finished seed leaves it in (paid or open) rather than by
+counting invoice objects: a crash between an invoice's creation and its
+finalisation left a draft that an object count had called complete. This path
+is tested through a stateful fake of the Stripe client that enforces the
+idempotency rules, interrupted before every customer and invoice write and a
+sample of payment writes; it has not been exercised against a live sandbox.
 
-- **Then the rest of the app had to follow.** Reading the account fixed the
-  seed and left the same hole open in the gateway the chat box uses: the
-  invoice item behind "Create a $250 invoice for Acme" and the price behind
-  every payment link still said `"usd"`, so the assistant could raise the
-  exact error the seed had just stopped raising — or, for a payment link, not
-  fail at all and quietly charge the wrong money. The gateway now resolves the
-  account's currency once per process and keeps it, and every place money
-  becomes text asks the gateway rather than assuming: the confirmation
-  summaries, both narrators, and the planner prompt — which matters more than
-  it looks, because the planner reads raw `*_cents` integers and renders the
-  figure itself, so an untold planner writes "$1,200.00" on a Canadian account
-  no matter what the page shows. The web app learns the currency from one
-  field on the summary response and holds it in a context, so the charts do
-  not carry it as a prop; `Intl.NumberFormat` renders it there and a small
-  table mirrors the same symbols in Python, so `CA$1,200.00` reads identically
-  in a narrated sentence and beside a bar. Two decisions were deliberate. The
-  $2,000 Telegram ceiling is 200,000 cents of *the account's* currency — the
-  brief writes "$2,000" and nothing more, and a fixed number of minor units
-  keeps it an invariant with no exchange rate in it. And the currency lives on
-  the gateway rather than as a new field on the action contexts: it is a fact
-  about the account the gateway fronts, and asking for it there meant no
-  change to the thirteen tests that build those contexts by hand.
+The seed also creates real failed PaymentIntents with Stripe's insufficient-funds
+test payment method instead of inventing failed records locally. It reads the
+account's default currency before creating data, which avoids assuming that a
+fresh reviewer sandbox is based in the United States.
 
-- **The smoke test had to learn what the code learned.** The manual
-  walkthrough is a browser page rather than a test file: twelve stages in
-  the order a reviewer meets them, eighty-eight checks of one thing to do
-  and one thing to expect, each ticked or flagged, the flags copied back as
-  a report to work through. It was written against the first sandbox and it
-  aged in three ways this session exposed. It pinned dates — "Wednesday,
-  September 2", "due Fri Sep 11". It assumed dollars in every expectation.
-  And it carried the old account's stray history as part of the baseline.
-  The revision starts from an empty sandbox the way the reviewer's run will:
-  a new key, the local database moved aside because its Telegram bindings
-  and audit rows name customer ids that exist only in the old account, and
-  the browser's last-known numbers cleared once, since the page paints them
-  before it asks. It has one check for each thing fixed here — a short
-  follow-up question that must not spiral into three ERR lines, every
-  object in the Stripe dashboard in the account's own currency, `currency`
-  on the summary response. Because the reviewer's
-  currency is unknown, every figure a reader *sees* sits behind a
-  placeholder that a control at the top of the page swaps for the account's
-  symbol; what a reader *types* stays "$250", the brief's own wording, which
-  the planner reads in whatever currency the account settles in.
+### Separating owner and customer capabilities
 
-- **Six bots, one token, and a `kill 0`.** The first `make dev` against
-  the new sandbox died in the bot with `sqlite3.OperationalError: disk I/O
-  error` on a `PRAGMA table_info`. The proximate cause was the smoke test's
-  own instruction. It said to move `data/assistant.db` aside, and in WAL
-  mode the `-wal` and `-shm` files beside it are part of the database, so a
-  fresh file was created next to a shared-memory index belonging to a
-  different one — which SQLite reports as an I/O error, and which not even
-  the `sqlite3` shell can open. The cause behind that was worse. `lsof` on
-  the stale `-shm` listed seven holders: an API process this session had
-  left running, and six Telegram bot processes started the previous day,
-  one per `make dev` since two in the afternoon. `scripts/dev.sh` stopped
-  its children with `trap 'kill 0'`, which signals the script's own process
-  group, the script included; that re-enters the trap and, on macOS's bash
-  3.2, crashes it — the `Segmentation fault: 11` that `make` had been
-  printing after every Ctrl-C — before the bot was told anything. Six bots
-  long-polling one token means Telegram splits the updates between them,
-  and the old ones still held the old sandbox's key, so the Telegram stages
-  of the smoke test would have been answered by yesterday's code against
-  yesterday's account. The script now collects the whole process tree with
-  `pgrep -P` before the first signal (`uv run`, `npm run`, and uvicorn's
-  reloader each wrap the real process, and a child re-parented after its
-  wrapper dies can no longer be found from it), asks every process to stop,
-  gives them five seconds, and kills what is left. A first rewrite using
-  `set -m` and process-group kills failed too: job control is not something
-  bash provides reliably without a controlling terminal. Testing the fix
-  was its own lesson. A background job of a non-interactive shell inherits
-  SIGINT ignored, and bash cannot trap a signal ignored at entry, so the
-  first two verification runs never delivered the Ctrl-C at all and looked
-  exactly like the bug; the third started the script from Python with
-  SIGINT reset to default, and it came down in under a second with nothing
-  left on either port. One more thing fell out of the same afternoon. The
-  seed never touches the database, so on a reviewer's fresh clone `make dev`
-  is the first thing to create the schema, and the API and the bot do it in
-  the same instant; `create_all` checks for a table and then creates it,
-  and the loser of that race would have crashed on "already exists". The
-  engine now retries the check, and a test stages the stale check to prove
-  the recovery.
+The owner and customer interfaces share an executor but not an action registry.
+Customer actions do not accept an arbitrary `customer_id`; the server resolves
+the bound customer before the model is involved. This prevents a prompt from
+turning into access to another customer's invoices or account-level revenue.
+The direct Telegram payment action also checks the $2,000 threshold in Python
+and creates an escalation instead of completing the payment. Stripe's hosted
+invoice page can take payment too, so for an invoice at or above the threshold
+the bot withholds that link everywhere (observations, buttons, callbacks) until
+the owner's approval is committed, at which point the approval path sends it.
+The bot answers only in private chats; in a group or channel every command,
+message, and button gets one fixed sentence and nothing is looked up, because
+replies go to the chat and a group has other members. Every button acts as the
+bound customer, Cancel included: a callback names an action id, and the row is
+dismissed only for the actor whose proposal it is. The figures a customer reads
+never pass through the model: amounts travel under an interface-only `display`
+key the loop strips from the planner's observation, and the renderer writes
+them onto each invoice's button and into one total line of its own, so "what do
+I owe?" is answered in full while the model can neither restate nor misstate a
+figure. Every action's parameter model forbids unknown keys, so a misspelt
+`amount` cannot silently become a full refund; the planner is told which key
+was wrong and tries again.
 
-## Limitations / with more time
+The two channels have separate output rules as well. The web app renders a
+restricted Markdown format, while Telegram output is sanitized to the smaller
+HTML subset that Telegram accepts. These are small details, but they matter when
+a malformed model response could otherwise make an entire customer message fail.
 
-- **Native tool calling was deliberately not used.** The propose-execute
-  loop gives up whatever reliability edge a provider's post-trained tool
-  format offers, in exchange for legibility (every step is an event we
-  control), portability (one code path across providers), and testability
-  (the executor runs on plain JSON with no model or network). At roughly
-  ten actions per registry that trade does not bite; at fifty it would, and
-  native tool calling would be worth revisiting.
-- **On-demand queries instead of webhooks.** Stripe webhooks would make the
-  summary and the live rail push-driven instead of polled, but they need a
-  public URL and therefore a tunnel — a wall between the reviewer and the
-  rest of the demo. Production would use them.
-- **Email verification for Telegram binding**, instead of a token the seed
-  script hands out — the honest production version of the identity
-  boundary described above.
-- **No session auth, multi-owner support, or rate limiting.** This is a
-  single-owner proof of concept behind one bearer token.
-- **Frontend tests cover logic, not layout.** The web suite pins the Markdown
-  renderer, error presentation, the pure functions behind the charts (local
-  day and hour labels, trend stats, comparison detection, the summary aside
-  split), and the components that carry behaviour: the confirmation card's
-  figure-or-sentence fallback, the receipt grid per action, the error strip,
-  the comparison chart's shared scale, and the thread's chart wiring and
-  retry. Layout and colour are checked by eye against the UI kit, not by
-  snapshot, and the backend still carries the claims worth proving (the
-  ceiling, scoping, confirmation integrity, the `occurred_at` concession,
-  executor validation).
-- **Stripe pagination beyond demo scale.** Listing and filtering happen in
-  Python over `auto_paging_iter()`. A 20-second cache shares each listing
-  across the reads that arrive together and is warmed at startup, which keeps
-  the page instant at ~200 objects; at production volume the cold listing
-  itself would be the problem, and the answer is a local mirror synced by
-  `created` and webhooks, deliberately not built here because it makes
-  SQLite a second source of truth for money.
+### Integration reliability
 
-- **Turn memory is text-only.** A turn's observations live only as long as the
-  turn; what persists is the question and the answer. A follow-up about a fact
-  already fetched therefore re-fetches it, and may reach for a different action
-  than the one that had it — `summarize_day` returns aggregates, so it cannot
-  answer "when". Storing each turn's steps beside its text would fix that and
-  would also stop prior turns from modelling prose replies, but it changes what
-  `GET /api/conversations/{id}` returns, so it is recorded here rather than
-  done.
-- **One timestamp escapes the local clock.** Every figure the app computes is
-  bucketed in the owner's timezone, but a payment row's `occurred_at` reaches
-  the planner as raw UTC, so an answer that quotes one states a time in a
-  different zone from the charts beside it. Formatting it like every other date
-  is a small change that arrived too late to make.
+Several issues only appeared during live walkthroughs. Stripe SDK objects needed
+to be normalized to plain dictionaries at the gateway boundary. The browser's
+SSE parser initially disagreed with the server's line endings. Provider errors
+were technically useful but inappropriate for an owner-facing message. These
+were addressed at their respective boundaries rather than with special cases in
+the interface.
 
+The API and Telegram bot run as separate processes over the same SQLite file.
+WAL mode and a claim-once status transition protect confirmations from being
+executed twice. Execution is three short transactions: the claim stores a
+server-minted idempotency key and commits, the Stripe call runs with no write
+transaction open, and the result and audit entry commit together; the narrator
+runs after that. A slow provider therefore never holds the writer lock the other
+process needs, a dropped stream cannot roll a finished execution back to
+pending, and a process that dies between the Stripe call and the record finishes
+the execution at its next start under the same key, which Stripe answers with
+the original result rather than a second operation. That replay is only safe
+while Stripe still holds the key, which it does for at least 24 hours, so
+recovery is bounded to twenty hours from the claim; an older row is parked as
+`needs_review` with its key in the audit log and the transcript, for a person
+to settle against Stripe's request log. Nothing reconciles against Stripe
+automatically. The amount a confirmation
+names is the amount stored: a full refund is pinned to the refundable balance at
+proposal time and an invoice payment to the amount owed, and either fails as
+stale if the balance moved in between. For dashboard reads, a short-lived shared
+cache avoids repeating the same full Stripe listing several times during one
+page load while keeping Stripe as the source of truth; a refresh that fails is
+reported in the masthead with a retry and leaves the previous figures, and their
+age, as they were.
 
-- **Totals trust the account to be single-currency.** Every write names the
-  account's currency, so an account seeded by this project cannot hold two.
-  But the domain records do not carry a currency and the totals do not check
-  one, so an account contaminated before the fix — the sandbox this was found
-  in still holds one CAD payment intent among 161 USD — sums the stray cents
-  as if they were the account's own. Carrying `currency` on `Payment` and
-  `Invoice` and filtering the totals to the account's is the small remaining
-  piece; it defends only against data the seed can no longer produce.
+## Testing and validation
 
-## Bonus: the escalation loop
+The automated suites cover the action executor, customer scoping, confirmation
+integrity, the payment ceiling, Stripe mapping, seed payloads, SSE parsing,
+formatting boundaries, chart calculations, and the main React interaction
+states. The hardening pass added tests for the confirmation lifecycle under
+concurrency (a blocked Stripe call, concurrent approvals, a rollback after
+execution, recovery after a crash), private-chat enforcement, the hosted-link
+rule, strict parameters, seed resume through a stateful fake Stripe client,
+one-time binding tokens, and the approval card's in-flight and failed states.
+Backend and frontend tests run without Stripe or an LLM by default and use
+fakes; they are not live-model evaluations. There is a separate opt-in live LLM
+smoke test. I also used fresh Stripe sandboxes and a manual reviewer-style
+walkthrough to catch integration problems that fakes could not expose; the
+changes from the hardening pass have been verified against fakes and the
+existing manual walkthrough has not yet been repeated against a live sandbox.
 
-A payment at or above $2,000 does not just fail on the Telegram side — it
-files an escalation the owner's web app surfaces in a dedicated panel, and
-approving it sends the customer a Stripe-hosted payment link back through
-the same chat. It was chosen because it is Replicant's own product pattern
-in miniature: automation handles the routine case, escalates cleanly to a
-human when it hits a limit, and resumes once that human acts — and because
-it turns what could have been two disconnected deliverables (a bot, a web
-app) into one loop that closes.
+## Limitations and next steps
 
-It also doubles as the answer to a question the brief does not ask
-directly but a payments assistant cannot dodge: what happens at the
-highest-stakes action available. Rather than push another one-time code to
-a device that might be the compromised one, the ceiling routes the decision
-out-of-band to the owner, who approves from a separate, already-authenticated
-channel. That is a stronger security property than an in-band second factor
-would have been, not a weaker one.
+- **Authentication is appropriate only for a local proof of concept.**
+  `OWNER_API_TOKEN` is compiled into the browser bundle, so it is a localhost
+  demonstration convenience, not production authentication; production would
+  use server-managed owner sessions. Customer binding tokens are now one-time,
+  but there is no owner-side way to issue a new one, so a customer who logs out
+  can only be re-bound by reseeding. A production Telegram identity flow would
+  use verified delivery (email or SMS), rotation, and stronger lifecycle
+  management.
+- **Notification delivery is best-effort.** The Telegram message with the
+  payment link is sent once, after the approval is committed; a delivery failure
+  is shown on the escalation card ("Approved · Telegram not reached") but not
+  retried. Production would need a durable outbox with retries. A manual
+  "resend" on an approved escalation would be a safe interim step and was left
+  out to avoid growing the API surface in this pass.
+- **Reads list the whole Stripe account.** A short-lived cache makes that
+  acceptable at demo scale. Production would use Stripe webhooks or an indexed
+  local read model rather than repeatedly listing the account.
+- **Ambiguous Stripe outcomes are recorded, not reconciled.** If Stripe applied
+  an operation but the response never arrived, the action is recorded as failed
+  with its idempotency key in the audit log; an execution interrupted more than
+  twenty hours ago is parked as `needs_review` with the same information. Both
+  are enough to check against Stripe's request log by hand; nothing reconciles
+  them automatically, and there is no owner-side screen for them beyond the
+  audit log and the transcript.
+- **The automated tests use fakes.** They pin the executor, the lifecycle, and
+  the interfaces, but they are not live-model evaluations. I would add
+  repeatable prompt evaluations for the required commands, ambiguous customer
+  names, date interpretation, prompt-injection attempts, and refusal behaviour
+  across supported models, plus a full browser test.
 
-## Bonus: a designed owner app
+## Bonus: owner escalation workflow
 
-The brief's owner interface could have stayed a chat box. The redesign gives
-it the shape a bookkeeper would recognise: the app speaks first with a
-narrated summary and the day's figure, three weeks of takings sit above the
-conversation, and the rail answers the questions an owner asks before they
-type — when today got busy, who pays the most, what is still unpaid, what
-needs a decision. Comparisons the assistant makes are drawn as well as said.
-None of it changes what the assistant can do; it changes how quickly the
-owner can read what it did. The design itself was produced in Claude Design
-and is checked in as a skill, so the visual language is as reproducible as
-the seed data. One flourish is deliberate theatre: the narrated summary
-arrives whole, but a cursor blinks in the greeting while the model writes
-and the aside and lede then type in, bold figures kept intact mid-reveal, so
-the page reads as an assistant speaking rather than a form filling in.
-Reduced-motion readers get the text at once.
+I chose the escalation workflow because it turns the payment ceiling into a
+useful product flow rather than a dead end. When a customer asks the bot to pay
+an invoice at or above $2,000, the server records an escalation and surfaces it
+in the owner's web app. For an invoice-backed escalation with a Stripe-hosted
+invoice URL, owner approval notifies the customer with that link; otherwise the
+bot sends an owner-follow-up message.
+
+This mirrors the pattern I would want in a production assistant: automate the
+routine case, hand higher-risk decisions to a person with the relevant context,
+and resume the workflow after that decision. It also connects the owner app and
+customer bot into one coherent system rather than treating them as unrelated
+deliverables.

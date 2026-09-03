@@ -289,8 +289,12 @@ event: confirmation {"action_id": "act_7f3", "summary": "Refund $45.00 ..."}
 - **Confirmation is a resource, not a dialog.** A `confirmation_required`
   response carries a server-stored `action_id`; approval executes that stored
   action.
-- **`Idempotency-Key` passthrough** on mutating routes, forwarded to Stripe. A
-  double-clicked approval must not refund twice.
+- **One idempotency key per approval, minted by the server.** Claiming a
+  pending action stores the key Stripe will see on the row; every attempt to
+  finish that execution, including recovery after a crash, reuses it. A
+  double-clicked approval must not refund twice, and a client header cannot
+  change the key. (Revised from a client-supplied `Idempotency-Key`
+  passthrough during the submission hardening pass.)
 - **Errors carry a fix.** `{error: {code, message, hint}}` — "set
   `STRIPE_SECRET_KEY` in `.env`" rather than "unauthorized". A fourth field,
   `detail`, carries developer text (a provider's raw response body, an
