@@ -8,7 +8,7 @@ import pytest
 from pydantic import BaseModel
 
 from app.agent.loop import GIVE_UP_TEXT, RETRY_TEXT, TurnHooks, run_turn
-from app.agent.schema import ActionSpec, Proposal, Registry
+from app.agent.schema import STEP_INSTRUCTION, ActionSpec, Proposal, Registry
 from app.domain.policy import MAX_AGENT_ITERATIONS
 from app.stripe_.gateway import StripeGatewayError
 from tests.fakes.llm_fake import ScriptedLLM
@@ -142,6 +142,31 @@ def test_planner_mistakes_read_as_a_retry_with_the_raw_text_kept_as_detail() -> 
     assert error.type == "error"
     assert error.data["code"] == "planner_retry" and error.data["message"] == RETRY_TEXT
     assert "JSON" not in error.data["message"] and "JSON" in error.data["detail"]
+
+
+def test_an_unparsable_reply_is_not_echoed_back_as_an_assistant_turn() -> None:
+    """A reply the parser rejected must not survive in the transcript as an example.
+
+    A model imitates the transcript it is given, and the strongest example in it
+    is its own last turn. Echoing prose back under the assistant role left every
+    retry a stronger case for answering in prose — the loop reinforcing the
+    mistake it was correcting, which is how one bad step became three in a row.
+    """
+    prose = "It was done on 2026-09-02."
+    llm = ScriptedLLM([prose, _call("answer", text="ok")])
+    _run(llm)
+    retry_transcript = llm.calls[1][1]
+    assert prose not in [m.content for m in retry_transcript if m.role == "assistant"]
+
+
+def test_the_correction_repeats_the_shape_the_reply_should_have_had() -> None:
+    """Dropping the bad reply only helps if the correction says what to do instead."""
+    llm = ScriptedLLM(["It was done on 2026-09-02.", _call("answer", text="ok")])
+    _run(llm)
+    correction = llm.calls[1][1][-1]
+    assert correction.role == "user"
+    assert "No JSON object" in correction.content
+    assert STEP_INSTRUCTION in correction.content
 
 
 def test_stripe_detail_from_a_failed_action_is_logged_and_kept_from_the_model(

@@ -10,7 +10,7 @@ displayable.
 
 from datetime import date
 
-from app.agent.schema import Registry
+from app.agent.schema import STEP_INSTRUCTION, Registry
 
 PERSONALITY = (
     "You are Ledger, the payments assistant for a small business. Voice: precise, calm, a "
@@ -52,8 +52,7 @@ TELEGRAM_FORMATTING = (
 )
 
 PROTOCOL = (
-    "Reply with exactly one JSON object and nothing else:\n"
-    '{"reasoning": "why this step", "action": "<name>", "parameters": {...}}\n'
+    f"{STEP_INSTRUCTION}\n"
     "Rules: amounts in parameters are integer cents; dates are YYYY-MM-DD; call read actions "
     "to get facts before answering; mutations are shown to the user for confirmation after you "
     "propose them, so propose once you have the ids and amounts; use clarify when a request is "

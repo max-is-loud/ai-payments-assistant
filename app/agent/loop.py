@@ -16,7 +16,13 @@ from pydantic import BaseModel, ValidationError
 
 from app.agent.events import AgentEvent, to_jsonable
 from app.agent.executor import ActionError, parse_call, resolve, validate_params
-from app.agent.schema import DISPLAY_KEY, TERMINAL_ACTIONS, ActionSpec, Registry
+from app.agent.schema import (
+    DISPLAY_KEY,
+    STEP_INSTRUCTION,
+    TERMINAL_ACTIONS,
+    ActionSpec,
+    Registry,
+)
 from app.domain.policy import MAX_AGENT_ITERATIONS
 from app.llm.base import ChatMessage, LLMBackend, extract_json_object
 from app.stripe_.gateway import StripeGatewayError
@@ -79,12 +85,30 @@ def for_model(observation: Any) -> Any:
     return observation
 
 
+def _correct(transcript: list[ChatMessage], exc: Exception) -> None:
+    """Ask for the step again, without leaving the unusable reply in the transcript.
+
+    A reply that failed to parse is by definition not protocol-shaped, so
+    `_feedback` is the wrong channel for it: recording it under the assistant
+    role would leave the transcript one more example of the format that just
+    failed, and the next attempt imitates the transcript. Observed in the wild
+    as three prose replies in a row, each likelier than the last. The correction
+    goes in as a user message instead and the bad reply is dropped; both
+    backends combine consecutive user messages, so nothing needs to fill the
+    assistant turn.
+    """
+    transcript.append(
+        ChatMessage(role="user", content=f"{exc}\n{STEP_INSTRUCTION}")
+    )
+
+
 def _retry_event(exc: Exception) -> AgentEvent:
     """The trail line for a planner mistake the loop is about to correct.
 
     The owner reads one sentence. The raw parse or validation text is kept as
     `detail`, which the API boundary logs and sends only when DEBUG=1; the
-    model itself still gets the exact text through `_feedback`.
+    model itself still gets the exact text, through `_correct` when the reply
+    would not parse and through `_feedback` when it parsed but would not run.
     """
     return AgentEvent("error", {
         "code": "planner_retry", "message": RETRY_TEXT, "hint": "", "detail": str(exc),
@@ -118,8 +142,11 @@ def run_turn(
         try:
             call = parse_call(extract_json_object(raw))
         except (ValueError, ActionError) as exc:
+            # `raw` is not a usable step, so it is corrected away rather than
+            # recorded; the other two retry paths below did parse and their
+            # `raw` is protocol-shaped, which is worth feeding back.
             yield _retry_event(exc)
-            _feedback(transcript, raw, {"error": str(exc)}, "invalid step")
+            _correct(transcript, exc)
             continue
         if call.reasoning:
             yield AgentEvent("planning", {"reasoning": call.reasoning})

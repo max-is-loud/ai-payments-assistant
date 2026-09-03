@@ -35,6 +35,14 @@ class NoParams(BaseModel):
 
 TERMINAL_ACTIONS: dict[str, type[BaseModel]] = {"answer": AnswerParams, "clarify": ClarifyParams}
 
+# How a planner step must be shaped. Quoted in two places that have to agree:
+# the system prompt states it up front, and the loop repeats it when a reply
+# arrives in any other shape. One constant so they cannot drift apart.
+STEP_INSTRUCTION = (
+    "Reply with exactly one JSON object and nothing else:\n"
+    '{"reasoning": "why this step", "action": "<name>", "parameters": {...}}'
+)
+
 # A read result may carry this key: an object for the interface only (per-day
 # bars for a chart). The loop strips it from what the model reads, so the
 # planner never holds a raw series to do its own arithmetic on; the trail and

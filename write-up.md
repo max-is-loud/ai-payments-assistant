@@ -252,6 +252,26 @@ rest of the app is built on.
   for money, which this design avoids on purpose, so it stays the named
   production path rather than something built for the submission.
 
+- **A retry loop that taught the planner to keep failing.** A follow-up
+  question — "when was this done?" — produced three `planner_retry` lines in a
+  row, and the log gave the same reason each time: "No JSON object found in the
+  model reply". The extractor tolerates code fences, prose on either side, and
+  a trailing second object, so that error means the reply contained no `{` at
+  all: the planner had answered in prose instead of proposing a step. The cause
+  was the correction itself. On a parse failure the loop fed the reply back
+  through `_feedback`, which records it under the assistant role — and a model
+  imitates its transcript, where the strongest example is its own last turn. So
+  each retry left a stronger case for answering in prose than the one before
+  it. Those three attempts plus the `summarize_day` that followed spent four of
+  the five steps a turn is allowed, and the fifth had to be terminal, which is
+  why the answer was a bare date and the timestamp took a second question. A
+  reply that does not parse is now corrected without being recorded: the loop
+  states the error, repeats the required shape as a user message, and drops the
+  reply. The two retry paths whose replies *did* parse still feed their step
+  back, because protocol-shaped JSON is a useful example. The old test could
+  not have caught this — a scripted planner recovers on cue whatever the
+  transcript says — so the new one asserts against the transcript itself.
+
 ## Limitations / with more time
 
 - **Native tool calling was deliberately not used.** The propose-execute
@@ -287,6 +307,20 @@ rest of the app is built on.
   itself would be the problem, and the answer is a local mirror synced by
   `created` and webhooks, deliberately not built here because it makes
   SQLite a second source of truth for money.
+
+- **Turn memory is text-only.** A turn's observations live only as long as the
+  turn; what persists is the question and the answer. A follow-up about a fact
+  already fetched therefore re-fetches it, and may reach for a different action
+  than the one that had it — `summarize_day` returns aggregates, so it cannot
+  answer "when". Storing each turn's steps beside its text would fix that and
+  would also stop prior turns from modelling prose replies, but it changes what
+  `GET /api/conversations/{id}` returns, so it is recorded here rather than
+  done.
+- **One timestamp escapes the local clock.** Every figure the app computes is
+  bucketed in the owner's timezone, but a payment row's `occurred_at` reaches
+  the planner as raw UTC, so an answer that quotes one states a time in a
+  different zone from the charts beside it. Formatting it like every other date
+  is a small change that arrived too late to make.
 
 ## Bonus: the escalation loop
 
