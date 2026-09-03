@@ -210,7 +210,10 @@ measurement against a running API; the before-and-after is in the write-up.
 
 5. **Run everything.** `make dev` starts the API on `:8000`, the web app on
    `:5173`, and the Telegram bot (long polling, no tunnel needed) together;
-   one `Ctrl-C` stops all three. Open `http://127.0.0.1:5173`.
+   one `Ctrl-C` stops all three and everything under them — the script
+   walks the process tree rather than trusting each wrapper to pass the
+   signal on, because a bot left behind keeps polling Telegram with the
+   same token. Open `http://127.0.0.1:5173`.
 
 6. **Bind Telegram.** In the bot's chat, send `/start <token>` with a token
    `make seed` printed for the customer you want to act as, or open
@@ -292,6 +295,9 @@ for both. The load-bearing claims each have a test behind them:
   the Python formatter and its browser twin agree on `CA$1,200.00`, the
   narrators are handed pre-formatted strings, and the planner prompt states
   the account's symbol.
+- Schema creation survives the API and the bot creating it at the same
+  instant on an empty file — which is what a fresh clone's first `make dev`
+  does, since the seed never touches the database.
 
 `uv run pytest -m live_llm` runs the one test that calls a real model; it is
 deselected by default (`addopts = -m 'not live_llm'` in `pyproject.toml`) and

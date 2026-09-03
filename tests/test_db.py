@@ -1,7 +1,10 @@
 """Persistence invariants: a pending action executes once; bindings expire."""
 
 from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any
 
+import pytest
 from sqlalchemy import Engine
 
 from app.db import bindings, conversations, escalations, pending_actions
@@ -104,3 +107,37 @@ def test_conversation_history_is_oldest_first_and_bounded(engine: Engine) -> Non
     with session_scope(engine) as session:
         history = conversations.history(session, "c1", limit=3)
         assert [m.content for m in history] == ["m2", "m3", "m4"]
+
+
+def test_make_engine_survives_another_process_creating_the_schema_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The API and the bot start together on an empty file, and only one can win.
+
+    `create_all` checks each table then creates it. When the other process
+    creates a table inside that gap, the CREATE fails with "already exists".
+    A second attempt sees the table and moves on; what must not happen is a
+    crash on first start, because `make dev` is the reviewer's first start.
+    """
+    from sqlalchemy.dialects.sqlite.base import SQLiteDialect
+
+    from app.db.engine import make_engine
+
+    url = f"sqlite:///{tmp_path / 'race.db'}"
+    make_engine(url)  # the process that won: every table now exists
+
+    real_has_table = SQLiteDialect.has_table
+    lied: list[str] = []
+
+    def stale_check(self: Any, connection: Any, table_name: str, *args: Any, **kw: Any) -> bool:
+        """Report the first table absent — a check made before the other process's CREATE landed."""
+        if not lied:
+            lied.append(table_name)
+            return False
+        return real_has_table(self, connection, table_name, *args, **kw)
+
+    monkeypatch.setattr(SQLiteDialect, "has_table", stale_check)
+    engine = make_engine(url)  # the process that lost: its first CREATE collides
+    assert lied, "the stale check was never consulted"
+    with engine.connect() as conn:
+        assert conn.exec_driver_sql("SELECT count(*) FROM conversations").scalar() == 0

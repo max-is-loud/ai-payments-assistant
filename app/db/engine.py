@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Engine, create_engine, event
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.db.models import Base
@@ -31,8 +32,31 @@ def make_engine(database_url: str) -> Engine:
         cursor.execute("PRAGMA busy_timeout=5000")
         cursor.close()
 
-    Base.metadata.create_all(engine)
+    _create_schema(engine)
     return engine
+
+
+def _create_schema(engine: Engine, attempts: int = 3) -> None:
+    """Create every table, tolerating another process doing the same at the same moment.
+
+    The API and the bot start together and both call this on one file. On a
+    fresh clone that file is empty — the seed never touches it — so the
+    reviewer's first `make dev` is a race. `create_all` checks each table and
+    then creates it; when the other process creates one inside that gap, the
+    CREATE fails with "already exists". The next attempt checks again, finds
+    the table, and skips it.
+
+    Raises:
+        OperationalError: Any failure other than that collision, or the
+            collision persisting past `attempts`.
+    """
+    for attempt in range(attempts):
+        try:
+            Base.metadata.create_all(engine)
+            return
+        except OperationalError as exc:
+            if "already exists" not in str(exc) or attempt == attempts - 1:
+                raise
 
 
 @contextmanager

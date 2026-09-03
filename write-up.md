@@ -351,6 +351,44 @@ rest of the app is built on.
   symbol; what a reader *types* stays "$250", the brief's own wording, which
   the planner reads in whatever currency the account settles in.
 
+- **Six bots, one token, and a `kill 0`.** The first `make dev` against
+  the new sandbox died in the bot with `sqlite3.OperationalError: disk I/O
+  error` on a `PRAGMA table_info`. The proximate cause was the smoke test's
+  own instruction. It said to move `data/assistant.db` aside, and in WAL
+  mode the `-wal` and `-shm` files beside it are part of the database, so a
+  fresh file was created next to a shared-memory index belonging to a
+  different one — which SQLite reports as an I/O error, and which not even
+  the `sqlite3` shell can open. The cause behind that was worse. `lsof` on
+  the stale `-shm` listed seven holders: an API process this session had
+  left running, and six Telegram bot processes started the previous day,
+  one per `make dev` since two in the afternoon. `scripts/dev.sh` stopped
+  its children with `trap 'kill 0'`, which signals the script's own process
+  group, the script included; that re-enters the trap and, on macOS's bash
+  3.2, crashes it — the `Segmentation fault: 11` that `make` had been
+  printing after every Ctrl-C — before the bot was told anything. Six bots
+  long-polling one token means Telegram splits the updates between them,
+  and the old ones still held the old sandbox's key, so the Telegram stages
+  of the smoke test would have been answered by yesterday's code against
+  yesterday's account. The script now collects the whole process tree with
+  `pgrep -P` before the first signal (`uv run`, `npm run`, and uvicorn's
+  reloader each wrap the real process, and a child re-parented after its
+  wrapper dies can no longer be found from it), asks every process to stop,
+  gives them five seconds, and kills what is left. A first rewrite using
+  `set -m` and process-group kills failed too: job control is not something
+  bash provides reliably without a controlling terminal. Testing the fix
+  was its own lesson. A background job of a non-interactive shell inherits
+  SIGINT ignored, and bash cannot trap a signal ignored at entry, so the
+  first two verification runs never delivered the Ctrl-C at all and looked
+  exactly like the bug; the third started the script from Python with
+  SIGINT reset to default, and it came down in under a second with nothing
+  left on either port. One more thing fell out of the same afternoon. The
+  seed never touches the database, so on a reviewer's fresh clone `make dev`
+  is the first thing to create the schema, and the API and the bot do it in
+  the same instant; `create_all` checks for a table and then creates it,
+  and the loser of that race would have crashed on "already exists". The
+  engine now retries the check, and a test stages the stale check to prove
+  the recovery.
+
 ## Limitations / with more time
 
 - **Native tool calling was deliberately not used.** The propose-execute
