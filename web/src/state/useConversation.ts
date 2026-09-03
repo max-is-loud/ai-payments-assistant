@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiFetch, describeError, streamTurn } from "../api/client";
+import { ApiError, apiFetch, describeError, streamTurn } from "../api/client";
 import type { AgentEvent, Confirmation, ExecutedResult, HistoryResponse } from "../api/types";
+
+// A confirmation's state: approving while the request is in flight, approved
+// only once the server streamed the executed result, cancelled by the owner.
+export type Decision = "approving" | "approved" | "cancelled";
 
 export interface Turn {
   id: string;
@@ -8,9 +12,17 @@ export interface Turn {
   text?: string;
   events: AgentEvent[];
   confirmation?: Confirmation;
-  decided?: "approved" | "cancelled";
+  decided?: Decision;
   result?: ExecutedResult;
   error?: string;
+}
+
+// An SSE error frame, read the same way an HTTP error envelope is.
+function describeFrame(data: Record<string, unknown>): string {
+  return describeError(new ApiError(
+    0, String(data.code ?? "error"), String(data.message ?? "The approval did not complete."),
+    String(data.hint ?? ""), String(data.detail ?? ""),
+  ));
 }
 
 const KEY = "ledger.conversation";
@@ -88,20 +100,36 @@ export function useConversation() {
     }
   }, []);
 
+  // Approval is a claim about money. The card says "approved" only once the
+  // stream has delivered the executed result; an HTTP failure, or a stream
+  // that ends with an error frame instead, puts the card back to its buttons
+  // with the failure under it, and the dashboard is told nothing moved. The
+  // idempotency key is the server's, stored on the action, so none is sent.
   const approve = useCallback(async (actionId: string) => {
     const resultId = crypto.randomUUID();
-    patch(actionId, (t) => ({ ...t, decided: "approved" }));
+    patch(actionId, (t) => ({ ...t, decided: "approving", error: undefined }));
     setTurns((prev) => [...prev, { id: resultId, role: "assistant", events: [] }]);
     setBusy(true);
+    let executed = false;
+    let failure: string | undefined;
     try {
-      await streamTurn(`/api/conversations/${id.current}/confirm`, { action_id: actionId },
-        (e) => absorb(resultId, e), { "Idempotency-Key": actionId });
-      notifyMutation();
+      await streamTurn(`/api/conversations/${id.current}/confirm`, { action_id: actionId }, (e) => {
+        absorb(resultId, e);
+        if (e.type === "answer" && e.data.result) executed = true;
+        if (e.type === "error") failure = describeFrame(e.data);
+      });
     } catch (e) {
-      patch(resultId, (t) => ({ ...t, error: describeError(e) }));
+      failure = describeError(e);
     } finally {
       setBusy(false);
     }
+    if (executed) {
+      patch(actionId, (t) => ({ ...t, decided: "approved" }));
+      notifyMutation();
+      return;
+    }
+    setTurns((prev) => prev.filter((t) => t.id !== resultId));
+    patch(actionId, (t) => ({ ...t, decided: undefined, error: failure ?? "The approval did not complete." }));
   }, []);
 
   const cancel = useCallback(async (actionId: string) => {

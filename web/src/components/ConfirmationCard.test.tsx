@@ -43,6 +43,15 @@ describe("ConfirmationCard", () => {
     expect(container.textContent).toContain("Cancelled");
   });
 
+  it("shows that approval is in flight, with nothing left to click, until the result arrives", () => {
+    const { container, queryByRole } = render(
+      <ConfirmationCard confirmation={refund} decided="approving" busy onApprove={noop} onCancel={noop} />,
+    );
+    expect(queryByRole("button")).toBeNull();
+    expect(container.textContent).toContain("Approving");
+    expect(container.textContent).not.toContain("Approved");
+  });
+
   it("calls approve and cancel from their buttons", () => {
     const onApprove = vi.fn();
     const onCancel = vi.fn();

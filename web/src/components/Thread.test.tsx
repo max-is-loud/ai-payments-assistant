@@ -48,3 +48,23 @@ describe("Thread", () => {
     expect(onRetry).toHaveBeenCalledWith("Refund Maya's last payment.");
   });
 });
+
+describe("Thread after a failed approval", () => {
+  it("shows the failure under the confirmation, with the card's own buttons as the retry", () => {
+    const onApprove = vi.fn();
+    const turns: Turn[] = [
+      { id: "u1", role: "user", text: "Refund Maya's last payment.", events: [] },
+      {
+        id: "act_1", role: "assistant", events: [], error: "Stripe couldn't complete that request. Try again.",
+        confirmation: { action_id: "act_1", action: "refund_payment", summary: "Refund $45.00 to Maya Chen", parameters: {} },
+      },
+    ];
+    const { getByRole, queryByRole, container } = render(
+      <Thread turns={turns} busy={false} error={null} onApprove={onApprove} onCancel={noop} onRetry={noop} />,
+    );
+    expect(container.querySelector(".ldg-error")?.textContent).toContain("Stripe couldn't complete that request.");
+    expect(queryByRole("button", { name: "Retry" })).toBeNull();
+    fireEvent.click(getByRole("button", { name: "Approve refund" }));
+    expect(onApprove).toHaveBeenCalledWith("act_1");
+  });
+});

@@ -1,4 +1,5 @@
 import type { Confirmation } from "../api/types";
+import type { Decision } from "../state/useConversation";
 import { AssistantBubble } from "./Bubbles";
 import { Button } from "./Button";
 import { Eyebrow } from "./Eyebrow";
@@ -12,11 +13,15 @@ const VERB: Record<string, string> = {
 // Money leaves on a refund; every other proposal asks for money to come in.
 const PREPOSITION: Record<string, string> = { refund_payment: "to", create_invoice: "for", approve_escalation: "for" };
 
+const DECIDED: Record<Decision, string> = { approving: "Approving…", approved: "Approved", cancelled: "Cancelled" };
+
 // The amber bubble. It leads with the figure and the name when the server sent
-// them; a proposal restored after a reload has only its sentence, which still reads.
+// them; a proposal restored after a reload has only its sentence, which still
+// reads. "Approved" appears only once the executed result has arrived; while
+// the request is in flight the card says so and offers nothing to click.
 export function ConfirmationCard({ confirmation, decided, busy, onApprove, onCancel }: {
   confirmation: Confirmation;
-  decided?: "approved" | "cancelled";
+  decided?: Decision;
   busy: boolean;
   onApprove: () => void;
   onCancel: () => void;
@@ -39,7 +44,7 @@ export function ConfirmationCard({ confirmation, decided, busy, onApprove, onCan
         <p>{summary}</p>
       )}
       {decided ? (
-        <Eyebrow className="decided">{decided === "approved" ? "Approved" : "Cancelled"}</Eyebrow>
+        <Eyebrow className="decided">{DECIDED[decided]}</Eyebrow>
       ) : (
         <div className="actions">
           <Button onClick={onApprove} disabled={busy}>{VERB[action] ?? "Approve"}</Button>

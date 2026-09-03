@@ -15,8 +15,10 @@ interface Actions {
 }
 
 // A failed send is retried with the owner's own words: the user turn just before
-// it. A failed approval has no such turn and no retry; the trail says what happened.
+// it. A failed approval keeps its confirmation card, whose Approve button is the
+// retry; re-sending the prompt would only propose the action a second time.
 function retryFor(turns: Turn[], index: number, onRetry: Actions["onRetry"]): (() => void) | undefined {
+  if (turns[index].confirmation) return undefined;
   const previous = turns[index - 1];
   const text = previous?.role === "user" ? previous.text : undefined;
   return text ? () => onRetry(text) : undefined;

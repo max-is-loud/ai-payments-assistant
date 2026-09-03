@@ -16,7 +16,10 @@ export default function App() {
   const [theme, toggleTheme] = useTheme();
   return (
     <CurrencyProvider value={dashboard.currency}>
-      <MastheadBand syncedAt={dashboard.syncedAt} theme={theme} onToggleTheme={toggleTheme} />
+      <MastheadBand
+        syncedAt={dashboard.syncedAt} syncError={dashboard.refreshError} onRetrySync={dashboard.retryRefresh}
+        theme={theme} onToggleTheme={toggleTheme}
+      />
       <div className="ldg-page">
         <Hero
           summary={dashboard.summary}

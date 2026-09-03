@@ -1,7 +1,7 @@
-// React's development StrictMode mounts effects twice, so the narration was
-// requested twice and the model answered with two different texts: the first
-// began typing, then the second replaced it and the effect restarted. A
-// response belonging to a cleaned-up effect must be ignored.
+// React's development StrictMode mounts effects twice. The narration is one
+// model call, so the second mount must reuse the first mount's request rather
+// than ask again; and a refresh that fails must say so without discarding the
+// numbers already on the page or pretending they are fresher than they are.
 //
 // Rendered directly inside <StrictMode>: renderHook's wrapper does not trigger
 // the double mount in this environment, a plain render does.
@@ -48,25 +48,48 @@ describe("useDashboard", () => {
     }
   });
 
-  it("ignores a narration that answers after its effect was cleaned up", async () => {
+  it("asks the narrator once even though StrictMode mounts the effect twice", async () => {
     const narrations: Array<(value: unknown) => void> = [];
     vi.mocked(apiFetch).mockImplementation((path: string) => {
       if (path === "/api/summary/today") return new Promise((resolve) => narrations.push(resolve));
-      if (path.startsWith("/api/summary/today?")) return Promise.resolve({ facts, text: null });
+      if (path.startsWith("/api/summary/today?")) return Promise.resolve({ facts, text: null, currency: "usd" });
       if (path === "/api/summary/series") return Promise.resolve({ daily: [], hourly_today: [], top_customers: [] });
       if (path === "/api/escalations") return Promise.resolve([]);
       return Promise.reject(new Error(`unexpected ${path}`));
     });
 
     render(<StrictMode><Harness /></StrictMode>);
-    await waitFor(() => expect(narrations).toHaveLength(2));
+    await waitFor(() => expect(narrations).toHaveLength(1));
+    await act(async () => narrations[0]({ facts, text: "Once.", currency: "usd" }));
+    expect(seen.latest?.summary?.text).toBe("Once.");
+    // Nothing else asked for a narration in the meantime: one model call per page load.
+    expect(vi.mocked(apiFetch).mock.calls.filter(([path]) => path === "/api/summary/today")).toHaveLength(1);
+  });
 
-    // The surviving mount's request answers first…
-    await act(async () => narrations[1]({ facts, text: "Second." }));
-    expect(seen.latest?.summary?.text).toBe("Second.");
+  it("keeps the last good numbers and their time when a refresh fails, and can retry", async () => {
+    let failing = false;
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (failing) return Promise.reject(new Error("Couldn't reach the assistant API. Is it running?"));
+      if (path === "/api/summary/today") return Promise.resolve({ facts, text: "Fine.", currency: "usd" });
+      if (path.startsWith("/api/summary/today?")) return Promise.resolve({ facts, text: null, currency: "usd" });
+      if (path === "/api/summary/series") return Promise.resolve({ daily: [], hourly_today: [], top_customers: [] });
+      if (path === "/api/escalations") return Promise.resolve([]);
+      return Promise.reject(new Error(`unexpected ${path}`));
+    });
+    render(<Harness />);
+    await waitFor(() => expect(seen.latest?.syncedAt).not.toBeNull());
+    const synced = seen.latest!.syncedAt;
+    expect(seen.latest?.refreshError).toBeNull();
 
-    // …and the cleaned-up mount's late answer must not replace it.
-    await act(async () => narrations[0]({ facts, text: "First." }));
-    expect(seen.latest?.summary?.text).toBe("Second.");
+    failing = true;
+    await act(async () => seen.latest!.retryRefresh());
+    await waitFor(() => expect(seen.latest?.refreshError).toContain("Couldn't reach the assistant API"));
+    expect(seen.latest?.facts).toEqual(facts);
+    expect(seen.latest?.syncedAt).toEqual(synced);
+
+    failing = false;
+    await act(async () => seen.latest!.retryRefresh());
+    await waitFor(() => expect(seen.latest?.refreshError).toBeNull());
+    expect(seen.latest!.syncedAt!.getTime()).toBeGreaterThanOrEqual(synced!.getTime());
   });
 });

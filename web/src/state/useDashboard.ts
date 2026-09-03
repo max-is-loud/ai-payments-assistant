@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, describeError } from "../api/client";
 import type { DailyFacts, Escalation, SeriesResponse, SummaryResponse } from "../api/types";
 import { todayIso } from "../lib/dates";
@@ -35,11 +35,17 @@ export function useDashboard(onMutation: (cb: () => void) => () => void) {
   const [escalations, setEscalations] = useState<Escalation[]>([]);
   const [escalationState, setEscalationState] = useState<Record<string, EscalationState>>({});
   const [railError, setRailError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [syncedAt, setSyncedAt] = useState<Date | null>(snapshot ? new Date(snapshot.savedAt) : null);
+  // The one narration request per page load; React's development StrictMode
+  // runs the effect twice, and the second run must reuse this, not ask again.
+  const narration = useRef<Promise<SummaryResponse> | null>(null);
 
   // Exact figures, no model call. Escalations are left alone right after an
   // approval so the card can show its outcome until the next poll clears it.
-  const refresh = useCallback((withEscalations = true) => {
+  // A failure is reported and leaves the figures and their time as they were:
+  // "synced 3m ago" stays true, and nothing pretends to be fresher than it is.
+  const refresh = useCallback((withEscalations = true): Promise<void> => {
     const facts$ = apiFetch<SummaryResponse>("/api/summary/today?narrate=false").then((s) => {
       setFacts(s.facts);
       setCurrency(s.currency);
@@ -52,10 +58,11 @@ export function useDashboard(onMutation: (cb: () => void) => () => void) {
     const escalations$ = withEscalations
       ? apiFetch<Escalation[]>("/api/escalations").then(setEscalations)
       : Promise.resolve();
-    Promise.all([facts$, series$, escalations$])
+    return Promise.all([facts$, series$, escalations$])
       .then(([fresh, freshSeries]) => {
         const now = new Date();
         setSyncedAt(now);
+        setRefreshError(null);
         const storage = browserStorage();
         if (storage) {
           saveSnapshot(storage, {
@@ -64,15 +71,18 @@ export function useDashboard(onMutation: (cb: () => void) => () => void) {
           });
         }
       })
-      .catch(() => undefined);
+      .catch((e) => setRefreshError(describeError(e)));
   }, []);
 
+  const retryRefresh = useCallback(() => refresh(), [refresh]);
+
   useEffect(() => {
-    // React's development StrictMode mounts this twice; the model writes a
-    // different narration each time, so the cleaned-up mount's answer must
-    // not replace the one that is already typing in.
+    // The model writes a different narration each time it is asked, so the
+    // cleaned-up mount's answer must not replace one already typing in, and
+    // the second mount must not ask a second time.
     let cancelled = false;
-    apiFetch<SummaryResponse>("/api/summary/today")
+    narration.current ??= apiFetch<SummaryResponse>("/api/summary/today");
+    narration.current
       .then((s) => {
         if (cancelled) return;
         setSummary(s);
@@ -80,6 +90,7 @@ export function useDashboard(onMutation: (cb: () => void) => () => void) {
         setCurrency(s.currency);
       })
       .catch((e) => {
+        narration.current = null;
         if (!cancelled) setSummaryError(describeError(e));
       });
     refresh();
@@ -107,6 +118,6 @@ export function useDashboard(onMutation: (cb: () => void) => () => void) {
 
   return {
     summary, summaryError, facts, currency, series, escalations, escalationState, railError, syncedAt,
-    approveEscalation,
+    refreshError, retryRefresh, approveEscalation,
   };
 }

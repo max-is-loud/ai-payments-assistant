@@ -29,7 +29,7 @@ describe("Hero", () => {
   });
 
   it("types the aside first, then the lede, and puts the cursor away when both are done", () => {
-    const { container } = render(<Hero summary={{ facts, text }} loading={false} error={null} facts={facts} />);
+    const { container } = render(<Hero summary={{ facts, text, currency: "usd" }} loading={false} error={null} facts={facts} />);
     act(() => vi.advanceTimersByTime(200));
     const partial = container.querySelector("h1 em")?.textContent ?? "";
     expect(partial.length).toBeGreaterThan(0);
@@ -47,7 +47,7 @@ describe("Hero", () => {
   });
 
   it("keeps bold intact while the lede is mid-reveal", () => {
-    const { container } = render(<Hero summary={{ facts, text }} loading={false} error={null} facts={facts} />);
+    const { container } = render(<Hero summary={{ facts, text, currency: "usd" }} loading={false} error={null} facts={facts} />);
     act(() => vi.advanceTimersByTime(600));
     act(() => vi.advanceTimersByTime(700));
     const lede = container.querySelector(".ldg-lede");
