@@ -76,6 +76,9 @@ class StripeOwnerGateway:
         self._client = stripe.StripeClient(
             api_key, stripe_version=STRIPE_API_VERSION, max_network_retries=2
         )
+        # Resolved on first use and kept: the account's currency does not
+        # change within a process, and every write needs it.
+        self._currency: Currency | None = None
 
     @property
     def api_version(self) -> str:
@@ -98,13 +101,15 @@ class StripeOwnerGateway:
             UnsupportedCurrency: The account has no minor unit to express cents
                 in; see `app.domain.currency.resolve`.
         """
-        with translate_stripe_errors():
-            # `accounts.retrieve` on the service client addresses a *connected*
-            # account by id; the key's own account is only reachable this way.
-            account = stripe.Account.retrieve(
-                api_key=self._api_key, stripe_version=STRIPE_API_VERSION
-            )
-        return resolve(account.to_dict().get("default_currency") or "")
+        if self._currency is None:
+            with translate_stripe_errors():
+                # `accounts.retrieve` on the service client addresses a *connected*
+                # account by id; the key's own account is only reachable this way.
+                account = stripe.Account.retrieve(
+                    api_key=self._api_key, stripe_version=STRIPE_API_VERSION
+                )
+            self._currency = resolve(account.to_dict().get("default_currency") or "")
+        return self._currency
 
     @property
     def client(self) -> stripe.StripeClient:
@@ -213,11 +218,16 @@ class StripeOwnerGateway:
         is the end of the given local day, which Stripe requires to be in the future.
         """
         due_at = datetime.combine(due_date, time(23, 59), tzinfo=local_timezone())
+        # Named on the invoice and on its item: Stripe rejects an item whose
+        # currency differs from its invoice, and the invoice's own currency
+        # falls back to the account default when it is not stated.
+        currency = self.default_currency().code
         with translate_stripe_errors():
             invoice = self._client.v1.invoices.create(
                 {
                     "customer": customer_id,
                     "collection_method": "send_invoice",
+                    "currency": currency,
                     "due_date": int(due_at.timestamp()),
                     "description": description,
                     "metadata": {"created_by": "assistant"},
@@ -229,7 +239,7 @@ class StripeOwnerGateway:
                     "customer": customer_id,
                     "invoice": invoice.id,
                     "amount": amount_cents,
-                    "currency": "usd",
+                    "currency": currency,
                     "description": description,
                 },
                 options={"idempotency_key": f"{idempotency_key}:item"},
@@ -245,11 +255,12 @@ class StripeOwnerGateway:
         self, *, amount_cents: int, description: str, idempotency_key: str
     ) -> str:
         """A payment link needs a Price; create an ad-hoc one with inline product data."""
+        currency = self.default_currency().code
         with translate_stripe_errors():
             price = self._client.v1.prices.create(
                 {
                     "unit_amount": amount_cents,
-                    "currency": "usd",
+                    "currency": currency,
                     "product_data": {"name": description},
                 },
                 options={"idempotency_key": f"{idempotency_key}:price"},
