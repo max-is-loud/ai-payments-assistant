@@ -45,6 +45,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+
+# Claude Code plugin scratch space.
+.superpowers/
 data/
 web/node_modules/
 web/dist/
