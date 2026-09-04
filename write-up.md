@@ -152,14 +152,13 @@ while Stripe still holds the key, which it does for at least 24 hours, so
 recovery is bounded to twenty hours from the claim; an older row is parked as
 `needs_review` with its key in the audit log and the transcript, for a person
 to settle against Stripe's request log. Nothing reconciles against Stripe
-automatically. The amount a confirmation
-names is the amount stored: a full refund is pinned to the refundable balance at
-proposal time and an invoice payment to the amount owed, and either fails as
-stale if the balance moved in between. For dashboard reads, a short-lived shared
-cache avoids repeating the same full Stripe listing several times during one
-page load while keeping Stripe as the source of truth; a refresh that fails is
-reported in the masthead with a retry and leaves the previous figures, and their
-age, as they were.
+automatically. The amount a confirmation names is the amount stored: a full
+refund is pinned to the refundable balance at proposal time and an invoice
+payment to the amount owed, and either fails as stale if the balance moved in
+between. For dashboard reads, a short-lived shared cache avoids repeating the
+same full Stripe listing several times during one page load while keeping
+Stripe as the source of truth; a refresh that fails is reported in the masthead
+with a retry and leaves the previous figures, and their age, as they were.
 
 ## Testing and validation
 
@@ -168,9 +167,13 @@ integrity, the payment ceiling, Stripe mapping, seed payloads, SSE parsing,
 formatting boundaries, chart calculations, and the main React interaction
 states. The hardening pass added tests for the confirmation lifecycle under
 concurrency (a blocked Stripe call, concurrent approvals, a rollback after
-execution, recovery after a crash), private-chat enforcement, the hosted-link
-rule, strict parameters, seed resume through a stateful fake Stripe client,
-one-time binding tokens, and the approval card's in-flight and failed states.
+execution, recovery after a crash, and a stale execution parked for review
+instead of replayed), private-chat enforcement, cancel scoped to the bound
+customer, the hosted-link rule, the amounts reaching the customer on buttons
+while never entering the planner's observation, strict parameters, seed resume
+through a stateful fake Stripe client interrupted before every customer and
+invoice write, one-time binding tokens, and the approval card's in-flight and
+failed states.
 Backend and frontend tests run without Stripe or an LLM by default and use
 fakes; they are not live-model evaluations. There is a separate opt-in live LLM
 smoke test. I also used fresh Stripe sandboxes and a manual reviewer-style
